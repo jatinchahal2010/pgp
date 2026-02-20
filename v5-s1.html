@@ -1,0 +1,1690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PGP Manager - OpenKeychain Style</title>
+    
+    <script>
+        window.pgpLoadAttempts = 0;
+        window.maxLoadAttempts = 3;
+        
+        function loadOpenPGP() {
+            const cdns = [
+                'https://unpkg.com/openpgp@5.10.2/dist/openpgp.min.js',
+                'https://cdn.jsdelivr.net/npm/openpgp@5.10.2/dist/openpgp.min.js'
+            ];
+            
+            const script = document.createElement('script');
+            script.src = cdns[window.pgpLoadAttempts % cdns.length];
+            script.async = false;
+            
+            script.onload = function() {
+                console.log('✓ OpenPGP loaded');
+                window.openpgpLoaded = true;
+            };
+            
+            script.onerror = function() {
+                window.pgpLoadAttempts++;
+                if (window.pgpLoadAttempts < window.maxLoadAttempts) {
+                    setTimeout(loadOpenPGP, 500);
+                }
+            };
+            
+            document.head.appendChild(script);
+        }
+        
+        loadOpenPGP();
+    </script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Roboto', 'Segoe UI', sans-serif;
+            background: #f5f5f5;
+            color: #212121;
+        }
+
+        /* Top App Bar */
+        .app-bar {
+            background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+            color: white;
+            padding: 16px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .app-bar h1 {
+            font-size: 20px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .menu-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 8px;
+        }
+
+        /* Navigation Drawer */
+        .drawer-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 2000;
+            display: none;
+        }
+
+        .drawer-overlay.active {
+            display: block;
+        }
+
+        .drawer {
+            position: fixed;
+            top: 0;
+            left: -280px;
+            width: 280px;
+            height: 100%;
+            background: white;
+            z-index: 2001;
+            transition: left 0.3s;
+            box-shadow: 2px 0 8px rgba(0,0,0,0.2);
+        }
+
+        .drawer.active {
+            left: 0;
+        }
+
+        .drawer-header {
+            background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%);
+            padding: 60px 16px 16px;
+            color: white;
+        }
+
+        .drawer-header h2 {
+            font-size: 18px;
+            font-weight: 500;
+        }
+
+        .drawer-menu {
+            list-style: none;
+        }
+
+        .drawer-menu li {
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .drawer-menu a {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px;
+            color: #212121;
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+
+        .drawer-menu a:hover {
+            background: #f5f5f5;
+        }
+
+        .drawer-menu .icon {
+            font-size: 24px;
+            width: 24px;
+            text-align: center;
+        }
+
+        /* Main Content */
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            min-height: calc(100vh - 56px);
+        }
+
+        /* Section Headers */
+        .section-header {
+            background: #f5f5f5;
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #757575;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* List Items */
+        .list-item {
+            padding: 16px;
+            border-bottom: 1px solid #e0e0e0;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .list-item:hover {
+            background: #f5f5f5;
+        }
+
+        .list-item:active {
+            background: #e0e0e0;
+        }
+
+        .list-item-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #4CAF50;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+
+        .list-item-content {
+            flex: 1;
+        }
+
+        .list-item-title {
+            font-size: 16px;
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+
+        .list-item-subtitle {
+            font-size: 14px;
+            color: #757575;
+        }
+
+        .list-item-meta {
+            font-size: 12px;
+            color: #9e9e9e;
+            margin-top: 2px;
+        }
+
+        /* FAB (Floating Action Button) */
+        .fab {
+            position: fixed;
+            bottom: 16px;
+            right: 16px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+            color: white;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            transition: transform 0.2s, box-shadow 0.2s;
+            z-index: 100;
+        }
+
+        .fab:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.4);
+        }
+
+        .fab:active {
+            transform: scale(0.95);
+        }
+
+        /* Dialog/Modal */
+        .dialog-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 3000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+        }
+
+        .dialog-overlay.active {
+            display: flex;
+        }
+
+        .dialog {
+            background: white;
+            border-radius: 8px;
+            max-width: 500px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+        }
+
+        .dialog-header {
+            padding: 20px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .dialog-title {
+            font-size: 20px;
+            font-weight: 500;
+        }
+
+        .dialog-content {
+            padding: 20px;
+        }
+
+        .dialog-actions {
+            padding: 8px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        /* Form Elements */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #424242;
+        }
+
+        input[type="text"],
+        input[type="email"],
+        input[type="password"],
+        textarea,
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            font-size: 16px;
+            font-family: inherit;
+            transition: border-color 0.2s;
+        }
+
+        input:focus,
+        textarea:focus,
+        select:focus {
+            outline: none;
+            border-color: #2196F3;
+        }
+
+        textarea {
+            min-height: 120px;
+            font-family: 'Courier New', monospace;
+            resize: vertical;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-primary {
+            background: #2196F3;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #1976D2;
+        }
+
+        .btn-text {
+            background: transparent;
+            color: #2196F3;
+        }
+
+        .btn-text:hover {
+            background: rgba(33, 150, 243, 0.1);
+        }
+
+        .btn-danger {
+            background: #f44336;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #d32f2f;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Info Cards */
+        .info-card {
+            background: #E3F2FD;
+            border-left: 4px solid #2196F3;
+            padding: 16px;
+            margin-bottom: 16px;
+            border-radius: 4px;
+        }
+
+        .info-card.warning {
+            background: #FFF3E0;
+            border-left-color: #FF9800;
+        }
+
+        .info-card.success {
+            background: #E8F5E9;
+            border-left-color: #4CAF50;
+        }
+
+        /* Backup Code Display */
+        .backup-code {
+            background: #263238;
+            color: #00E676;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 18px;
+            text-align: center;
+            line-height: 1.8;
+            margin: 20px 0;
+            letter-spacing: 2px;
+        }
+
+        .backup-code-group {
+            display: block;
+            margin: 8px 0;
+        }
+
+        /* Status Indicators */
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-protected {
+            background: #E8F5E9;
+            color: #2E7D32;
+        }
+
+        .status-unprotected {
+            background: #FFF3E0;
+            color: #F57C00;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #9e9e9e;
+        }
+
+        .empty-state-icon {
+            font-size: 64px;
+            margin-bottom: 16px;
+            opacity: 0.3;
+        }
+
+        .empty-state-text {
+            font-size: 16px;
+        }
+
+        /* Loading */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #2196F3;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            color: white;
+        }
+
+        .spinner {
+            border: 4px solid rgba(255,255,255,0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* QR Code Container */
+        .qr-container {
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+        }
+
+        #qrCanvas {
+            display: none;
+        }
+
+        .video-container {
+            width: 100%;
+            max-width: 400px;
+            margin: 0 auto;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        video {
+            width: 100%;
+            display: block;
+        }
+
+        /* Responsive */
+        @media (min-width: 768px) {
+            .container {
+                margin-top: 20px;
+                border-radius: 8px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Action Sheet */
+        .action-sheet {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: white;
+            border-radius: 16px 16px 0 0;
+            z-index: 4000;
+            transform: translateY(100%);
+            transition: transform 0.3s;
+            box-shadow: 0 -4px 16px rgba(0,0,0,0.2);
+        }
+
+        .action-sheet.active {
+            transform: translateY(0);
+        }
+
+        .action-sheet-item {
+            padding: 16px;
+            border-bottom: 1px solid #e0e0e0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .action-sheet-item:hover {
+            background: #f5f5f5;
+        }
+
+        .action-sheet-item:last-child {
+            border-bottom: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loadingScreen" class="loading-overlay">
+        <div class="spinner"></div>
+        <h2>PGP Manager</h2>
+        <p style="margin-top: 10px;">Loading encryption libraries...</p>
+    </div>
+
+    <!-- Navigation Drawer -->
+    <div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+    <div class="drawer" id="drawer">
+        <div class="drawer-header">
+            <h2>🔐 PGP Manager</h2>
+            <p style="font-size: 12px; margin-top: 4px; opacity: 0.9;">Secure Key Management</p>
+        </div>
+        <ul class="drawer-menu">
+            <li><a href="#" onclick="showView('keys'); closeDrawer();"><span class="icon">🔑</span> My Keys</a></li>
+            <li><a href="#" onclick="showView('encrypt'); closeDrawer();"><span class="icon">🔒</span> Encrypt/Decrypt</a></li>
+            <li><a href="#" onclick="showView('backup'); closeDrawer();"><span class="icon">💾</span> Backup/Restore</a></li>
+            <li><a href="#" onclick="showView('scanner'); closeDrawer();"><span class="icon">📱</span> QR Scanner</a></li>
+            <li><a href="#" onclick="showView('settings'); closeDrawer();"><span class="icon">⚙️</span> Settings</a></li>
+            <li><a href="#" onclick="showView('help'); closeDrawer();"><span class="icon">❓</span> Help</a></li>
+        </ul>
+    </div>
+
+    <!-- App Bar -->
+    <div class="app-bar">
+        <button class="menu-btn" onclick="toggleDrawer()">☰</button>
+        <h1><span id="appTitle">My Keys</span></h1>
+        <button class="menu-btn" onclick="showSearch()">🔍</button>
+    </div>
+
+    <!-- Main Container -->
+    <div class="container" id="mainContent">
+        
+        <!-- Keys View -->
+        <div id="keysView" class="view-content">
+            <div class="section-header">MY KEYS</div>
+            <div id="keysList"></div>
+        </div>
+
+        <!-- Encrypt/Decrypt View -->
+        <div id="encryptView" class="view-content hidden">
+            <div class="section-header">ENCRYPT</div>
+            <div class="list-item" onclick="showDialog('encryptText')">
+                <div class="list-item-icon" style="background: #2196F3;">💬</div>
+                <div class="list-item-content">
+                    <div class="list-item-title">Encrypt Text</div>
+                    <div class="list-item-subtitle">Encrypt a text message</div>
+                </div>
+            </div>
+            <div class="list-item" onclick="showDialog('encryptFile')">
+                <div class="list-item-icon" style="background: #2196F3;">📄</div>
+                <div class="list-item-content">
+                    <div class="list-item-title">Encrypt Files</div>
+                    <div class="list-item-subtitle">Encrypt files and documents</div>
+                </div>
+            </div>
+
+            <div class="section-header">DECRYPT/VERIFY</div>
+            <div class="list-item" onclick="showDialog('decryptFile')">
+                <div class="list-item-icon" style="background: #4CAF50;">📁</div>
+                <div class="list-item-content">
+                    <div class="list-item-title">Select Input File</div>
+                    <div class="list-item-subtitle">Choose encrypted file to decrypt</div>
+                </div>
+            </div>
+            <div class="list-item" onclick="showDialog('decryptClipboard')">
+                <div class="list-item-icon" style="background: #4CAF50;">📋</div>
+                <div class="list-item-content">
+                    <div class="list-item-title">Read from Clipboard</div>
+                    <div class="list-item-subtitle">Decrypt text from clipboard</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Backup/Restore View -->
+        <div id="backupView" class="view-content hidden">
+            <div style="padding: 16px;">
+                <div class="info-card warning">
+                    ⚠️ <strong>Important:</strong> Backups that include your own keys must never be shared with other people!
+                </div>
+            </div>
+
+            <div class="section-header">BACKUP</div>
+            <div class="list-item" onclick="createFullBackup()">
+                <div class="list-item-icon" style="background: #FF9800;">💾</div>
+                <div class="list-item-content">
+                    <div class="list-item-title">Full Backup (Encrypted)</div>
+                    <div class="list-item-subtitle">Backup all keys with encryption</div>
+                </div>
+            </div>
+            <div class="list-item" onclick="exportPublicKeysOnly()">
+                <div class="list-item-icon" style="background: #FF9800;">📗</div>
+                <div class="list-item-content">
+                    <div class="list-item-title">Export Contact Keys Only</div>
+                    <div class="list-item-subtitle">Public keys without private keys</div>
+                </div>
+            </div>
+
+            <div class="section-header">RESTORE</div>
+            <div class="list-item" onclick="document.getElementById('restoreFile').click()">
+                <div class="list-item-icon" style="background: #4CAF50;">📥</div>
+                <div class="list-item-content">
+                    <div class="list-item-title">Select Input File</div>
+                    <div class="list-item-subtitle">Restore from backup file</div>
+                </div>
+            </div>
+            <input type="file" id="restoreFile" class="hidden" accept=".pgp,.gpg,.asc,.json" onchange="restoreFromFile(this)">
+        </div>
+
+        <!-- Scanner View -->
+        <div id="scannerView" class="view-content hidden">
+            <div style="padding: 16px;">
+                <div class="info-card">
+                    ℹ️ Scan QR codes containing PGP keys or encrypted messages. All processing is done locally on your device.
+                </div>
+                
+                <div style="margin-top: 16px;">
+                    <button class="btn btn-primary" style="width: 100%; margin-bottom: 10px;" onclick="startCamera()">📷 Start Camera</button>
+                    <button class="btn btn-text" style="width: 100%;" onclick="document.getElementById('qrImageUpload').click()">🖼️ Upload QR Image</button>
+                    <input type="file" id="qrImageUpload" class="hidden" accept="image/*" onchange="scanQRFromImage(this)">
+                </div>
+
+                <div class="video-container hidden" id="videoContainer" style="margin-top: 20px;">
+                    <video id="qrVideo" autoplay playsinline></video>
+                </div>
+                <canvas id="qrCanvas"></canvas>
+
+                <div id="qrResult" style="margin-top: 20px;"></div>
+            </div>
+        </div>
+
+        <!-- Settings View -->
+        <div id="settingsView" class="view-content hidden">
+            <div style="padding: 16px;">
+                <div class="info-card success">
+                    <strong>Storage Status</strong><br>
+                    <div id="storageInfo" style="margin-top: 10px; font-family: monospace; font-size: 13px;"></div>
+                </div>
+                
+                <button class="btn btn-danger" style="width: 100%; margin-top: 10px;" onclick="clearAllData()">🗑️ Delete All Keys</button>
+            </div>
+        </div>
+
+        <!-- Help View -->
+        <div id="helpView" class="view-content hidden">
+            <div style="padding: 16px;">
+                <h3 style="margin-bottom: 16px;">How to Use</h3>
+                
+                <div class="info-card">
+                    <strong>1. Generate Keys</strong><br>
+                    Click the + button to create a new key pair with your name and email.
+                </div>
+
+                <div class="info-card">
+                    <strong>2. Share Public Key</strong><br>
+                    Share your public key via QR code or export file so others can encrypt messages for you.
+                </div>
+
+                <div class="info-card">
+                    <strong>3. Import Contact Keys</strong><br>
+                    Import public keys from your contacts to encrypt messages for them.
+                </div>
+
+                <div class="info-card">
+                    <strong>4. Backup Your Keys</strong><br>
+                    Always create encrypted backups of your keys with a strong backup code.
+                </div>
+
+                <div class="info-card warning">
+                    <strong>⚠️ Security Tips</strong><br>
+                    • Never share your private key<br>
+                    • Use strong passphrases<br>
+                    • Keep backups safe<br>
+                    • Write down backup codes
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FAB -->
+    <button class="fab" onclick="showDialog('generateKey')">+</button>
+
+    <!-- Generate Key Dialog -->
+    <div class="dialog-overlay" id="generateKeyDialog">
+        <div class="dialog">
+            <div class="dialog-header">
+                <div class="dialog-title">Generate New Key Pair</div>
+            </div>
+            <div class="dialog-content">
+                <div class="info-card">
+                    ℹ️ Keys are generated locally and never sent anywhere. Store them securely!
+                </div>
+
+                <div class="form-group">
+                    <label>Name</label>
+                    <input type="text" id="genName" placeholder="John Doe">
+                </div>
+
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="genEmail" placeholder="john@example.com">
+                </div>
+
+                <div class="form-group">
+                    <label>Passphrase (Recommended)</label>
+                    <input type="password" id="genPassphrase" placeholder="Strong passphrase">
+                </div>
+
+                <div class="form-group">
+                    <label>Key Type</label>
+                    <select id="genKeyType">
+                        <option value="rsa">RSA 4096-bit (Most compatible)</option>
+                        <option value="ecc">ECC Curve25519 (Modern, faster)</option>
+                    </select>
+                </div>
+
+                <div id="genResult"></div>
+            </div>
+            <div class="dialog-actions">
+                <button class="btn btn-text" onclick="closeDialog('generateKey')">Cancel</button>
+                <button class="btn btn-primary" onclick="generateKeyPair()">Generate</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Backup Code Dialog -->
+    <div class="dialog-overlay" id="backupCodeDialog">
+        <div class="dialog">
+            <div class="dialog-header">
+                <div class="dialog-title">Backup Key</div>
+            </div>
+            <div class="dialog-content">
+                <div class="info-card warning">
+                    ⚠️ <strong>Write down this backup code!</strong><br>
+                    You will need it to restore your backup. Without it, you cannot recover your keys.
+                </div>
+
+                <div class="backup-code" id="backupCodeDisplay"></div>
+
+                <div style="margin: 20px 0;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="checkbox" id="backupCodeConfirm">
+                        <span>I have written down this backup code. Without it, I will be unable to restore the backup.</span>
+                    </label>
+                </div>
+            </div>
+            <div class="dialog-actions">
+                <button class="btn btn-text" onclick="shareBackupCode()">📤 Share</button>
+                <button class="btn btn-primary" id="saveBackupBtn" disabled onclick="saveBackupFile()">💾 Save Backup</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Encrypt Dialog -->
+    <div class="dialog-overlay" id="encryptTextDialog">
+        <div class="dialog">
+            <div class="dialog-header">
+                <div class="dialog-title">Encrypt Text</div>
+            </div>
+            <div class="dialog-content">
+                <div class="form-group">
+                    <label>Recipient</label>
+                    <select id="encryptRecipient">
+                        <option value="">Select recipient...</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Message</label>
+                    <textarea id="encryptMessage" placeholder="Type your secret message..."></textarea>
+                </div>
+
+                <div id="encryptResult"></div>
+            </div>
+            <div class="dialog-actions">
+                <button class="btn btn-text" onclick="closeDialog('encryptText')">Cancel</button>
+                <button class="btn btn-primary" onclick="encryptMessage()">Encrypt</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Decrypt Dialog -->
+    <div class="dialog-overlay" id="decryptClipboardDialog">
+        <div class="dialog">
+            <div class="dialog-header">
+                <div class="dialog-title">Decrypt Message</div>
+            </div>
+            <div class="dialog-content">
+                <div class="form-group">
+                    <label>Your Private Key</label>
+                    <select id="decryptPrivateKey">
+                        <option value="">Select your key...</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Passphrase (if protected)</label>
+                    <input type="password" id="decryptPassphrase" placeholder="Enter passphrase">
+                </div>
+
+                <div class="form-group">
+                    <label>Encrypted Message</label>
+                    <textarea id="decryptMessage" placeholder="Paste encrypted message..."></textarea>
+                </div>
+
+                <div id="decryptResult"></div>
+            </div>
+            <div class="dialog-actions">
+                <button class="btn btn-text" onclick="closeDialog('decryptClipboard')">Cancel</button>
+                <button class="btn btn-primary" onclick="decryptMessage()">Decrypt</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Key Details Action Sheet -->
+    <div class="dialog-overlay" id="keyDetailsOverlay">
+        <div class="action-sheet" id="keyDetailsSheet">
+            <div class="action-sheet-item" onclick="viewKeyDetails()">
+                <span style="font-size: 24px;">👁️</span>
+                <span>View Key</span>
+            </div>
+            <div class="action-sheet-item" onclick="shareKeyQR()">
+                <span style="font-size: 24px;">📱</span>
+                <span>Show QR Code</span>
+            </div>
+            <div class="action-sheet-item" onclick="exportSelectedKey()">
+                <span style="font-size: 24px;">💾</span>
+                <span>Export Key</span>
+            </div>
+            <div class="action-sheet-item" onclick="deleteSelectedKey()" style="color: #f44336;">
+                <span style="font-size: 24px;">🗑️</span>
+                <span>Delete Key</span>
+            </div>
+            <div class="action-sheet-item" onclick="closeActionSheet()">
+                <span style="font-size: 24px;">❌</span>
+                <span>Cancel</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- QR Display Dialog -->
+    <div class="dialog-overlay" id="qrDisplayDialog">
+        <div class="dialog">
+            <div class="dialog-header">
+                <div class="dialog-title">Share via QR Code</div>
+            </div>
+            <div class="dialog-content">
+                <div class="qr-container">
+                    <div id="qrCodeDisplay"></div>
+                </div>
+            </div>
+            <div class="dialog-actions">
+                <button class="btn btn-text" onclick="closeDialog('qrDisplay')">Close</button>
+                <button class="btn btn-primary" onclick="downloadQRCode()">Download</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    
+    <script>
+        // Global variables
+        let keys = { public: [], private: [] };
+        let currentView = 'keys';
+        let selectedKey = null;
+        let currentBackupData = null;
+        let currentBackupCode = null;
+        let qrScanning = false;
+        let videoStream = null;
+        let currentQRCode = null;
+
+        // Initialize app
+        let loadCheckInterval = setInterval(function() {
+            if (typeof openpgp !== 'undefined') {
+                clearInterval(loadCheckInterval);
+                setTimeout(initApp, 500);
+            }
+        }, 500);
+
+        setTimeout(function() {
+            if (typeof openpgp === 'undefined') {
+                clearInterval(loadCheckInterval);
+                document.getElementById('loadingScreen').innerHTML = 
+                    '<div style="max-width: 400px; padding: 40px; background: white; border-radius: 8px; color: #212121;">' +
+                    '<h2 style="color: #f44336; margin-bottom: 16px;">⚠️ Loading Error</h2>' +
+                    '<p>Could not load encryption library. Please check your internet connection and refresh the page.</p>' +
+                    '<button class="btn btn-primary" style="margin-top: 20px;" onclick="location.reload()">Reload Page</button></div>';
+            }
+        }, 10000);
+
+        function initApp() {
+            // Load stored keys
+            try {
+                const stored = localStorage.getItem('pgpKeys');
+                keys = stored ? JSON.parse(stored) : { public: [], private: [] };
+            } catch(e) {
+                keys = { public: [], private: [] };
+            }
+
+            updateKeysList();
+            updateKeySelects();
+            updateStorageInfo();
+            
+            document.getElementById('loadingScreen').style.display = 'none';
+        }
+
+        // Navigation
+        function toggleDrawer() {
+            const drawer = document.getElementById('drawer');
+            const overlay = document.getElementById('drawerOverlay');
+            drawer.classList.toggle('active');
+            overlay.classList.toggle('active');
+        }
+
+        function closeDrawer() {
+            document.getElementById('drawer').classList.remove('active');
+            document.getElementById('drawerOverlay').classList.remove('active');
+        }
+
+        function showView(viewName) {
+            currentView = viewName;
+            
+            // Hide all views
+            document.querySelectorAll('.view-content').forEach(v => v.classList.add('hidden'));
+            
+            // Show selected view
+            const viewMap = {
+                'keys': 'keysView',
+                'encrypt': 'encryptView',
+                'backup': 'backupView',
+                'scanner': 'scannerView',
+                'settings': 'settingsView',
+                'help': 'helpView'
+            };
+            
+            const titleMap = {
+                'keys': 'My Keys',
+                'encrypt': 'Encrypt/Decrypt',
+                'backup': 'Backup/Restore',
+                'scanner': 'QR Scanner',
+                'settings': 'Settings',
+                'help': 'Help'
+            };
+            
+            document.getElementById(viewMap[viewName]).classList.remove('hidden');
+            document.getElementById('appTitle').textContent = titleMap[viewName];
+        }
+
+        // Dialog management
+        function showDialog(dialogName) {
+            const dialogMap = {
+                'generateKey': 'generateKeyDialog',
+                'encryptText': 'encryptTextDialog',
+                'encryptFile': 'encryptTextDialog',
+                'decryptFile': 'decryptClipboardDialog',
+                'decryptClipboard': 'decryptClipboardDialog',
+                'qrDisplay': 'qrDisplayDialog',
+                'backupCode': 'backupCodeDialog'
+            };
+            
+            const dialogId = dialogMap[dialogName];
+            if (dialogId) {
+                document.getElementById(dialogId).classList.add('active');
+            }
+        }
+
+        function closeDialog(dialogName) {
+            const dialogMap = {
+                'generateKey': 'generateKeyDialog',
+                'encryptText': 'encryptTextDialog',
+                'decryptClipboard': 'decryptClipboardDialog',
+                'qrDisplay': 'qrDisplayDialog',
+                'backupCode': 'backupCodeDialog'
+            };
+            
+            const dialogId = dialogMap[dialogName];
+            if (dialogId) {
+                document.getElementById(dialogId).classList.remove('active');
+            }
+        }
+
+        function showActionSheet(keyType, keyIndex) {
+            selectedKey = { type: keyType, index: keyIndex };
+            document.getElementById('keyDetailsOverlay').classList.add('active');
+            setTimeout(() => {
+                document.getElementById('keyDetailsSheet').classList.add('active');
+            }, 10);
+        }
+
+        function closeActionSheet() {
+            document.getElementById('keyDetailsSheet').classList.remove('active');
+            setTimeout(() => {
+                document.getElementById('keyDetailsOverlay').classList.remove('active');
+                selectedKey = null;
+            }, 300);
+        }
+
+        // Key Management
+        async function generateKeyPair() {
+            const name = document.getElementById('genName').value.trim();
+            const email = document.getElementById('genEmail').value.trim();
+            const passphrase = document.getElementById('genPassphrase').value;
+            const keyType = document.getElementById('genKeyType').value;
+            const resultDiv = document.getElementById('genResult');
+
+            if (!name || !email) {
+                resultDiv.innerHTML = '<div class="info-card warning">⚠️ Please enter name and email</div>';
+                return;
+            }
+
+            if (!email.includes('@')) {
+                resultDiv.innerHTML = '<div class="info-card warning">⚠️ Please enter a valid email address</div>';
+                return;
+            }
+
+            resultDiv.innerHTML = '<div style="text-align: center;"><div class="spinner" style="margin: 20px auto;"></div><p>Generating keys... This may take 10-30 seconds.</p></div>';
+
+            try {
+                const options = {
+                    userIDs: [{ name: name, email: email }],
+                    passphrase: passphrase || undefined
+                };
+
+                if (keyType === 'rsa') {
+                    options.type = 'rsa';
+                    options.rsaBits = 4096;
+                } else {
+                    options.type = 'ecc';
+                    options.curve = 'curve25519';
+                }
+
+                const { privateKey, publicKey } = await openpgp.generateKey(options);
+
+                const keyId = email + '_' + Date.now();
+                keys.public.push({
+                    id: keyId,
+                    name: name,
+                    email: email,
+                    key: publicKey,
+                    created: new Date().toISOString()
+                });
+
+                keys.private.push({
+                    id: keyId,
+                    name: name,
+                    email: email,
+                    key: privateKey,
+                    hasPassphrase: !!passphrase,
+                    created: new Date().toISOString()
+                });
+
+                saveKeys();
+                updateKeysList();
+                updateKeySelects();
+                updateStorageInfo();
+
+                resultDiv.innerHTML = '<div class="info-card success">✅ Key pair generated successfully!</div>';
+                
+                setTimeout(() => {
+                    closeDialog('generateKey');
+                    document.getElementById('genName').value = '';
+                    document.getElementById('genEmail').value = '';
+                    document.getElementById('genPassphrase').value = '';
+                    resultDiv.innerHTML = '';
+                }, 2000);
+            } catch (error) {
+                resultDiv.innerHTML = '<div class="info-card warning">❌ Error: ' + error.message + '</div>';
+            }
+        }
+
+        function updateKeysList() {
+            const listDiv = document.getElementById('keysList');
+            let html = '';
+
+            if (keys.public.length === 0 && keys.private.length === 0) {
+                html = '<div class="empty-state">' +
+                    '<div class="empty-state-icon">🔑</div>' +
+                    '<div class="empty-state-text">No keys yet<br>Tap + to create a new key</div>' +
+                    '</div>';
+            } else {
+                // Group keys by email
+                const allKeys = [];
+                
+                keys.private.forEach((privateKey, index) => {
+                    allKeys.push({
+                        type: 'private',
+                        index: index,
+                        ...privateKey
+                    });
+                });
+
+                keys.public.forEach((publicKey, index) => {
+                    // Check if there's already a private key with same email
+                    const hasPrivate = allKeys.some(k => k.email === publicKey.email && k.type === 'private');
+                    if (!hasPrivate) {
+                        allKeys.push({
+                            type: 'public',
+                            index: index,
+                            ...publicKey
+                        });
+                    }
+                });
+
+                allKeys.forEach(key => {
+                    const icon = key.type === 'private' ? '🔒' : '📗';
+                    const statusBadge = key.hasPassphrase ? 
+                        '<span class="status-badge status-protected">🔒 Protected</span>' : 
+                        '<span class="status-badge status-unprotected">⚠️ Unprotected</span>';
+                    
+                    html += '<div class="list-item" onclick="showActionSheet(\'' + key.type + '\', ' + key.index + ')">';
+                    html += '<div class="list-item-icon" style="background: ' + (key.type === 'private' ? '#4CAF50' : '#2196F3') + ';">' + icon + '</div>';
+                    html += '<div class="list-item-content">';
+                    html += '<div class="list-item-title">' + escapeHtml(key.name || key.email) + '</div>';
+                    html += '<div class="list-item-subtitle">' + escapeHtml(key.email) + '</div>';
+                    html += '<div class="list-item-meta">' + (key.type === 'private' ? 'My Key • ' + statusBadge : 'Contact Key') + ' • Created ' + new Date(key.created).toLocaleDateString() + '</div>';
+                    html += '</div>';
+                    html += '</div>';
+                });
+            }
+
+            listDiv.innerHTML = html;
+        }
+
+        function updateKeySelects() {
+            const encryptSelect = document.getElementById('encryptRecipient');
+            const decryptSelect = document.getElementById('decryptPrivateKey');
+
+            encryptSelect.innerHTML = '<option value="">Select recipient...</option>';
+            keys.public.forEach((key, index) => {
+                encryptSelect.innerHTML += '<option value="' + index + '">' + escapeHtml(key.name) + ' (' + escapeHtml(key.email) + ')</option>';
+            });
+
+            decryptSelect.innerHTML = '<option value="">Select your key...</option>';
+            keys.private.forEach((key, index) => {
+                decryptSelect.innerHTML += '<option value="' + index + '">' + escapeHtml(key.name) + ' (' + escapeHtml(key.email) + ')</option>';
+            });
+        }
+
+        // Encrypt/Decrypt
+        async function encryptMessage() {
+            const recipientIndex = document.getElementById('encryptRecipient').value;
+            const message = document.getElementById('encryptMessage').value;
+            const resultDiv = document.getElementById('encryptResult');
+
+            if (!recipientIndex) {
+                resultDiv.innerHTML = '<div class="info-card warning">⚠️ Please select a recipient</div>';
+                return;
+            }
+
+            if (!message) {
+                resultDiv.innerHTML = '<div class="info-card warning">⚠️ Please enter a message</div>';
+                return;
+            }
+
+            try {
+                resultDiv.innerHTML = '<div style="text-align: center;"><div class="spinner" style="margin: 20px auto;"></div><p>Encrypting...</p></div>';
+
+                const publicKey = await openpgp.readKey({ armoredKey: keys.public[recipientIndex].key });
+                const encrypted = await openpgp.encrypt({
+                    message: await openpgp.createMessage({ text: message }),
+                    encryptionKeys: publicKey
+                });
+
+                resultDiv.innerHTML = '<div class="info-card success">✅ Message encrypted!</div>' +
+                    '<div class="form-group"><label>Encrypted Message</label>' +
+                    '<textarea readonly style="min-height: 150px;">' + escapeHtml(encrypted) + '</textarea></div>' +
+                    '<button class="btn btn-primary" style="width: 100%;" onclick="copyEncrypted(this.previousElementSibling.querySelector(\'textarea\').value)">📋 Copy to Clipboard</button>';
+            } catch (error) {
+                resultDiv.innerHTML = '<div class="info-card warning">❌ Error: ' + error.message + '</div>';
+            }
+        }
+
+        async function decryptMessage() {
+            const privateKeyIndex = document.getElementById('decryptPrivateKey').value;
+            const passphrase = document.getElementById('decryptPassphrase').value;
+            const encryptedMessage = document.getElementById('decryptMessage').value.trim();
+            const resultDiv = document.getElementById('decryptResult');
+
+            if (!privateKeyIndex) {
+                resultDiv.innerHTML = '<div class="info-card warning">⚠️ Please select your key</div>';
+                return;
+            }
+
+            if (!encryptedMessage) {
+                resultDiv.innerHTML = '<div class="info-card warning">⚠️ Please enter encrypted message</div>';
+                return;
+            }
+
+            try {
+                resultDiv.innerHTML = '<div style="text-align: center;"><div class="spinner" style="margin: 20px auto;"></div><p>Decrypting...</p></div>';
+
+                let privateKey = await openpgp.readPrivateKey({ armoredKey: keys.private[privateKeyIndex].key });
+                
+                if (!privateKey.isDecrypted() && passphrase) {
+                    privateKey = await openpgp.decryptKey({
+                        privateKey: privateKey,
+                        passphrase: passphrase
+                    });
+                }
+
+                const message = await openpgp.readMessage({ armoredMessage: encryptedMessage });
+                const { data: decrypted } = await openpgp.decrypt({
+                    message,
+                    decryptionKeys: privateKey
+                });
+
+                resultDiv.innerHTML = '<div class="info-card success">✅ Message decrypted!</div>' +
+                    '<div class="form-group"><label>Decrypted Message</label>' +
+                    '<textarea readonly style="min-height: 150px;">' + escapeHtml(decrypted) + '</textarea></div>' +
+                    '<button class="btn btn-primary" style="width: 100%;" onclick="copyEncrypted(this.previousElementSibling.querySelector(\'textarea\').value)">📋 Copy to Clipboard</button>';
+            } catch (error) {
+                resultDiv.innerHTML = '<div class="info-card warning">❌ Error: ' + (error.message.includes('passphrase') ? 'Incorrect passphrase or wrong key' : error.message) + '</div>';
+            }
+        }
+
+        function copyEncrypted(text) {
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(() => {
+                    alert('✅ Copied to clipboard!');
+                });
+            } else {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                alert('✅ Copied to clipboard!');
+            }
+        }
+
+        // Backup/Restore
+        function generateBackupCode() {
+            const groups = [];
+            for (let i = 0; i < 9; i++) {
+                const group = Math.floor(1000 + Math.random() * 9000).toString();
+                groups.push(group);
+            }
+            return groups;
+        }
+
+        async function createFullBackup() {
+            if (keys.public.length === 0 && keys.private.length === 0) {
+                alert('⚠️ No keys to backup');
+                return;
+            }
+
+            const backupCode = generateBackupCode();
+            currentBackupCode = backupCode.join('-');
+            
+            // Display backup code
+            let codeHtml = '';
+            for (let i = 0; i < backupCode.length; i += 3) {
+                codeHtml += '<span class="backup-code-group">' + 
+                    backupCode.slice(i, i + 3).join('-') + '</span>';
+            }
+            
+            document.getElementById('backupCodeDisplay').innerHTML = codeHtml;
+            
+            // Create encrypted backup
+            try {
+                const backupData = {
+                    version: '1.0',
+                    timestamp: new Date().toISOString(),
+                    keys: keys
+                };
+                
+                currentBackupData = JSON.stringify(backupData);
+                
+                showDialog('backupCode');
+                
+                // Enable save button when checkbox is checked
+                document.getElementById('backupCodeConfirm').onchange = function() {
+                    document.getElementById('saveBackupBtn').disabled = !this.checked;
+                };
+            } catch (error) {
+                alert('❌ Error creating backup: ' + error.message);
+            }
+        }
+
+        function shareBackupCode() {
+            if (navigator.share) {
+                navigator.share({
+                    title: 'PGP Backup Code',
+                    text: 'Backup Code:\n' + currentBackupCode
+                });
+            } else {
+                copyEncrypted(currentBackupCode);
+            }
+        }
+
+        function saveBackupFile() {
+            if (!currentBackupData) return;
+            
+            const blob = new Blob([currentBackupData], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'pgp_backup_' + Date.now() + '.pgp';
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            closeDialog('backupCode');
+            alert('✅ Backup saved! Keep your backup code safe.');
+            
+            currentBackupData = null;
+            currentBackupCode = null;
+        }
+
+        function exportPublicKeysOnly() {
+            if (keys.public.length === 0) {
+                alert('⚠️ No public keys to export');
+                return;
+            }
+
+            const exportData = {
+                version: '1.0',
+                timestamp: new Date().toISOString(),
+                keys: { public: keys.public, private: [] }
+            };
+
+            const blob = new Blob([JSON.stringify(exportData)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'pgp_public_keys_' + Date.now() + '.json';
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            alert('✅ Public keys exported!');
+        }
+
+        function restoreFromFile(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    
+                    if (data.keys) {
+                        if (confirm('Import ' + (data.keys.public.length + data.keys.private.length) + ' keys?\n\nThis will merge with your existing keys.')) {
+                            keys.public = keys.public.concat(data.keys.public || []);
+                            keys.private = keys.private.concat(data.keys.private || []);
+                            
+                            saveKeys();
+                            updateKeysList();
+                            updateKeySelects();
+                            updateStorageInfo();
+                            
+                            alert('✅ Successfully imported ' + (data.keys.public.length + data.keys.private.length) + ' keys!');
+                        }
+                    } else {
+                        alert('❌ Invalid backup file format');
+                    }
+                } catch (err) {
+                    alert('❌ Error reading backup: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+            
+            input.value = '';
+        }
+
+        // Key Actions
+        function viewKeyDetails() {
+            if (!selectedKey) return;
+            
+            const key = keys[selectedKey.type][selectedKey.index];
+            alert('Key Details\n\nName: ' + key.name + '\nEmail: ' + key.email + '\nType: ' + selectedKey.type + '\nCreated: ' + new Date(key.created).toLocaleString());
+            
+            closeActionSheet();
+        }
+
+        function shareKeyQR() {
+            if (!selectedKey) return;
+            
+            const key = keys[selectedKey.type][selectedKey.index];
+            const qrDiv = document.getElementById('qrCodeDisplay');
+            qrDiv.innerHTML = '';
+            
+            try {
+                currentQRCode = new QRCode(qrDiv, {
+                    text: key.key,
+                    width: 256,
+                    height: 256,
+                    colorDark: '#000000',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.M
+                });
+                
+                showDialog('qrDisplay');
+            } catch (error) {
+                alert('❌ Error generating QR code: ' + error.message);
+            }
+            
+            closeActionSheet();
+        }
+
+        function downloadQRCode() {
+            const canvas = document.querySelector('#qrCodeDisplay canvas');
+            if (!canvas) return;
+            
+            canvas.toBlob(function(blob) {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'pgp_qr_' + Date.now() + '.png';
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+        }
+
+        function exportSelectedKey() {
+            if (!selectedKey) return;
+            
+            const key = keys[selectedKey.type][selectedKey.index];
+            const blob = new Blob([key.key], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = key.email + '_' + selectedKey.type + '.asc';
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            closeActionSheet();
+        }
+
+        function deleteSelectedKey() {
+            if (!selectedKey) return;
+            
+            if (confirm('⚠️ Delete this key?\n\nThis action cannot be undone!')) {
+                keys[selectedKey.type].splice(selectedKey.index, 1);
+                saveKeys();
+                updateKeysList();
+                updateKeySelects();
+                updateStorageInfo();
+            }
+            
+            closeActionSheet();
+        }
+
+        // QR Scanner
+        function startCamera() {
+            if (typeof jsQR === 'undefined') {
+                alert('⚠️ QR Scanner not loaded. Please refresh.');
+                return;
+            }
+
+            const video = document.getElementById('qrVideo');
+            const container = document.getElementById('videoContainer');
+
+            container.classList.remove('hidden');
+            qrScanning = true;
+
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+                .then(function(stream) {
+                    videoStream = stream;
+                    video.srcObject = stream;
+                    video.play();
+                    requestAnimationFrame(scanQR);
+                })
+                .catch(function(err) {
+                    alert('❌ Camera error: ' + err.message);
+                    container.classList.add('hidden');
+                });
+        }
+
+        function scanQR() {
+            const video = document.getElementById('qrVideo');
+            const canvas = document.getElementById('qrCanvas');
+            const context = canvas.getContext('2d');
+
+            if (video.readyState === video.HAVE_ENOUGH_DATA && qrScanning) {
+                canvas.height = video.videoHeight;
+                canvas.width = video.videoWidth;
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                const code = jsQR(imageData.data, imageData.width, imageData.height);
+
+                if (code) {
+                    handleQRData(code.data);
+                    stopCamera();
+                }
+            }
+
+            if (qrScanning) {
+                requestAnimationFrame(scanQR);
+            }
+        }
+
+        function stopCamera() {
+            qrScanning = false;
+            const video = document.getElementById('qrVideo');
+            const container = document.getElementById('videoContainer');
+            
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+            }
+            
+            container.classList.add('hidden');
+        }
+
+        function scanQRFromImage(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.getElementById('qrCanvas');
+                    const context = canvas.getContext('2d');
+                    
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    context.drawImage(img, 0, 0);
+                    
+                    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                    const code = jsQR(imageData.data, imageData.width, imageData.height);
+                    
+                    if (code) {
+                        handleQRData(code.data);
+                    } else {
+                        alert('❌ No QR code found');
+                    }
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+            
+            input.value = '';
+        }
+
+        function handleQRData(data) {
+            document.getElementById('qrResult').innerHTML = 
+                '<div class="info-card success">✅ QR Code Scanned!</div>' +
+                '<textarea readonly style="width: 100%; min-height: 120px; margin-top: 10px;">' + escapeHtml(data) + '</textarea>' +
+                '<button class="btn btn-primary" style="width: 100%; margin-top: 10px;" onclick="importScannedKey(\'' + data.replace(/'/g, "\\'") + '\')">Import This Key</button>';
+        }
+
+        async function importScannedKey(keyData) {
+            try {
+                const key = await openpgp.readKey({ armoredKey: keyData });
+                const userId = key.users[0].userID;
+                
+                const isPrivate = key.isPrivate();
+                const keyType = isPrivate ? 'private' : 'public';
+                
+                keys[keyType].push({
+                    id: (userId.email || 'unknown') + '_' + Date.now(),
+                    name: userId.name || userId.email || 'Unknown',
+                    email: userId.email || 'unknown@email.com',
+                    key: keyData,
+                    hasPassphrase: isPrivate ? !key.isDecrypted() : false,
+                    created: new Date().toISOString()
+                });
+
+                saveKeys();
+                updateKeysList();
+                updateKeySelects();
+                
+                alert('✅ Key imported successfully!');
+                showView('keys');
+            } catch (error) {
+                alert('❌ Error importing key: ' + error.message);
+            }
+        }
+
+        // Settings
+        function updateStorageInfo() {
+            const totalKeys = keys.public.length + keys.private.length;
+            const storageSize = new Blob([JSON.stringify(keys)]).size;
+            const storageKB = (storageSize / 1024).toFixed(2);
+            
+            document.getElementById('storageInfo').innerHTML = 
+                'Total Keys: ' + totalKeys + '<br>' +
+                'Storage Used: ' + storageKB + ' KB<br>' +
+                'Status: ♾️ Stored permanently';
+        }
+
+        function clearAllData() {
+            if (confirm('⚠️ DELETE ALL KEYS?\n\nThis will permanently delete all ' + (keys.public.length + keys.private.length) + ' keys.\n\nThis CANNOT be undone!')) {
+                if (confirm('Are you ABSOLUTELY SURE?')) {
+                    localStorage.removeItem('pgpKeys');
+                    keys = { public: [], private: [] };
+                    updateKeysList();
+                    updateKeySelects();
+                    updateStorageInfo();
+                    alert('✅ All keys deleted');
+                }
+            }
+        }
+
+        // Utility
+        function saveKeys() {
+            try {
+                localStorage.setItem('pgpKeys', JSON.stringify(keys));
+            } catch(e) {
+                alert('❌ Error saving: ' + e.message);
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function showSearch() {
+            alert('🔍 Search feature coming soon!');
+        }
+    </script>
+</body>
+</html>

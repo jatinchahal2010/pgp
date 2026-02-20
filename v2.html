@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Cold Crypto Manager — Single File</title>
+<style>
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#0f1724;color:#e6eef6;margin:0;padding:20px}
+h1{margin-top:0}
+textarea,input,select{width:100%;padding:8px;margin:6px 0;background:#111827;color:#e6eef6;border:1px solid #1f2937;border-radius:6px}
+button{padding:8px 12px;margin:6px 4px 6px 0;border-radius:6px;border:none;background:#10b981;color:#002;font-weight:bold;cursor:pointer}
+button.secondary{background:#374151;color:#e6eef6}
+.section{background:#111827;padding:16px;border-radius:10px;margin-bottom:16px;border:1px solid #1f2937}
+.key-preview{white-space:pre-wrap;word-break:break-all;background:#0b1220;padding:10px;border-radius:8px;font-family:monospace;font-size:12px}
+</style>
+</head>
+<body>
+
+<h1>Cold Crypto Manager (Offline)</h1>
+
+<div class="section">
+<h3>Generate RSA Keypair (2048)</h3>
+<input id="label" placeholder="Label (example: alice@example.com)">
+<button onclick="generate()">Generate</button>
+<div id="keys"></div>
+</div>
+
+<div class="section">
+<h3>Encrypt</h3>
+<select id="pubSelect"></select>
+<textarea id="plain" placeholder="Message"></textarea>
+<button onclick="encrypt()">Encrypt</button>
+<div id="cipherOut" class="key-preview"></div>
+</div>
+
+<div class="section">
+<h3>Decrypt</h3>
+<select id="privSelect"></select>
+<textarea id="cipherIn" placeholder="Paste ciphertext JSON"></textarea>
+<button onclick="decrypt()">Decrypt</button>
+<div id="plainOut" class="key-preview"></div>
+</div>
+
+<script>
+const enc=new TextEncoder();
+const dec=new TextDecoder();
+let store=[];
+
+function ab2b64(buf){return btoa(String.fromCharCode(...new Uint8Array(buf)));}
+function b642ab(b64){let s=atob(b64);let a=new Uint8Array(s.length);for(let i=0;i<s.length;i++)a[i]=s.charCodeAt(i);return a.buffer;}
+function pemEncode(buf,label){let b64=ab2b64(buf);let lines=b64.match(/.{1,64}/g).join("\n");return `-----BEGIN ${label}-----\n${lines}\n-----END ${label}-----\n`;}
+function pemDecode(pem){return b642ab(pem.replace(/-----.*?-----/g,'').replace(/\s+/g,''));}
+
+async function generate(){
+let label=document.getElementById("label").value||("key-"+Date.now());
+let kp=await crypto.subtle.generateKey({name:"RSA-OAEP",modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:"SHA-256"},true,["encrypt","decrypt"]);
+let pub=pemEncode(await crypto.subtle.exportKey("spki",kp.publicKey),"PUBLIC KEY");
+let priv=pemEncode(await crypto.subtle.exportKey("pkcs8",kp.privateKey),"PRIVATE KEY");
+store.push({label,pub,priv});
+refresh();
+}
+
+function refresh(){
+let pubSel=document.getElementById("pubSelect");
+let privSel=document.getElementById("privSelect");
+pubSel.innerHTML="<option value=''>Select public key</option>";
+privSel.innerHTML="<option value=''>Select private key</option>";
+store.forEach((k,i)=>{
+pubSel.innerHTML+=`<option value="${i}">${k.label}</option>`;
+privSel.innerHTML+=`<option value="${i}">${k.label}</option>`;
+});
+document.getElementById("keys").innerHTML=store.map(k=>`<div class="key-preview">${k.pub}\n${k.priv}</div>`).join("");
+}
+
+async function encrypt(){
+let i=document.getElementById("pubSelect").value;
+if(i==="")return;
+let msg=document.getElementById("plain").value;
+let pub=await crypto.subtle.importKey("spki",pemDecode(store[i].pub),{name:"RSA-OAEP",hash:"SHA-256"},true,["encrypt"]);
+let aes=await crypto.subtle.generateKey({name:"AES-GCM",length:256},true,["encrypt","decrypt"]);
+let raw=await crypto.subtle.exportKey("raw",aes);
+let iv=crypto.getRandomValues(new Uint8Array(12));
+let ct=await crypto.subtle.encrypt({name:"AES-GCM",iv},aes,enc.encode(msg));
+let wrapped=await crypto.subtle.encrypt({name:"RSA-OAEP"},pub,raw);
+let out={wrappedKey:ab2b64(wrapped),iv:ab2b64(iv.buffer),ciphertext:ab2b64(ct)};
+document.getElementById("cipherOut").textContent=JSON.stringify(out,null,2);
+}
+
+async function decrypt(){
+let i=document.getElementById("privSelect").value;
+if(i==="")return;
+let txt=document.getElementById("cipherIn").value;
+let obj=JSON.parse(txt);
+let priv=await crypto.subtle.importKey("pkcs8",pemDecode(store[i].priv),{name:"RSA-OAEP",hash:"SHA-256"},true,["decrypt"]);
+let raw=await crypto.subtle.decrypt({name:"RSA-OAEP"},priv,b642ab(obj.wrappedKey));
+let aes=await crypto.subtle.importKey("raw",raw,{name:"AES-GCM"},false,["decrypt"]);
+let pt=await crypto.subtle.decrypt({name:"AES-GCM",iv:new Uint8Array(b642ab(obj.iv))},aes,b642ab(obj.ciphertext));
+document.getElementById("plainOut").textContent=dec.decode(pt);
+}
+</script>
+
+</body>
+</html>

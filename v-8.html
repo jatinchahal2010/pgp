@@ -1,0 +1,1788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PGP Manager - Complete</title>
+    
+    <script>
+        window.pgpLoadAttempts = 0;
+        window.maxLoadAttempts = 3;
+        
+        function loadOpenPGP() {
+            const cdns = [
+                'https://unpkg.com/openpgp@5.10.2/dist/openpgp.min.js',
+                'https://cdn.jsdelivr.net/npm/openpgp@5.10.2/dist/openpgp.min.js'
+            ];
+            
+            const script = document.createElement('script');
+            script.src = cdns[window.pgpLoadAttempts % cdns.length];
+            script.async = false;
+            
+            script.onload = function() {
+                window.openpgpLoaded = true;
+            };
+            
+            script.onerror = function() {
+                window.pgpLoadAttempts++;
+                if (window.pgpLoadAttempts < window.maxLoadAttempts) {
+                    setTimeout(loadOpenPGP, 500);
+                }
+            };
+            
+            document.head.appendChild(script);
+        }
+        
+        loadOpenPGP();
+    </script>
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Roboto', 'Segoe UI', sans-serif;
+            background: #f5f5f5;
+            color: #212121;
+        }
+
+        .app-bar {
+            background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+            color: white;
+            padding: 16px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .app-bar h1 {
+            font-size: 20px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .menu-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 8px;
+        }
+
+        .drawer-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 2000;
+            display: none;
+        }
+
+        .drawer-overlay.active { display: block; }
+
+        .drawer {
+            position: fixed;
+            top: 0;
+            left: -280px;
+            width: 280px;
+            height: 100%;
+            background: white;
+            z-index: 2001;
+            transition: left 0.3s;
+            box-shadow: 2px 0 8px rgba(0,0,0,0.2);
+        }
+
+        .drawer.active { left: 0; }
+
+        .drawer-header {
+            background: linear-gradient(135deg, #4CAF50 0%, #388E3C 100%);
+            padding: 60px 16px 16px;
+            color: white;
+        }
+
+        .drawer-header h2 { font-size: 18px; font-weight: 500; }
+
+        .drawer-menu { list-style: none; }
+
+        .drawer-menu li { border-bottom: 1px solid #e0e0e0; }
+
+        .drawer-menu a {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px;
+            color: #212121;
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+
+        .drawer-menu a:hover { background: #f5f5f5; }
+
+        .drawer-menu .icon {
+            font-size: 24px;
+            width: 24px;
+            text-align: center;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            min-height: calc(100vh - 56px);
+        }
+
+        .section-header {
+            background: #f5f5f5;
+            padding: 8px 16px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #757575;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .list-item {
+            padding: 16px;
+            border-bottom: 1px solid #e0e0e0;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .list-item:hover { background: #f5f5f5; }
+
+        .list-item-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #4CAF50;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+
+        .list-item-content { flex: 1; }
+
+        .list-item-title {
+            font-size: 16px;
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+
+        .list-item-subtitle {
+            font-size: 14px;
+            color: #757575;
+        }
+
+        .list-item-meta {
+            font-size: 12px;
+            color: #9e9e9e;
+            margin-top: 2px;
+        }
+
+        .fab {
+            position: fixed;
+            bottom: 16px;
+            right: 16px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+            color: white;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            transition: transform 0.2s;
+            z-index: 100;
+        }
+
+        .fab:hover { transform: scale(1.1); }
+
+        .dialog-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 3000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+        }
+
+        .dialog-overlay.active { display: flex; }
+
+        .dialog {
+            background: white;
+            border-radius: 8px;
+            max-width: 500px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+        }
+
+        .dialog-header {
+            padding: 20px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .dialog-title {
+            font-size: 20px;
+            font-weight: 500;
+        }
+
+        .dialog-content { padding: 20px; }
+
+        .dialog-actions {
+            padding: 8px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .form-group { margin-bottom: 20px; }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #424242;
+        }
+
+        input[type="text"],
+        input[type="email"],
+        input[type="password"],
+        input[type="number"],
+        textarea,
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            font-size: 16px;
+            font-family: inherit;
+            transition: border-color 0.2s;
+        }
+
+        input:focus,
+        textarea:focus,
+        select:focus {
+            outline: none;
+            border-color: #2196F3;
+        }
+
+        textarea {
+            min-height: 120px;
+            font-family: 'Courier New', monospace;
+            resize: vertical;
+        }
+
+        .btn {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-primary {
+            background: #2196F3;
+            color: white;
+        }
+
+        .btn-primary:hover { background: #1976D2; }
+
+        .btn-text {
+            background: transparent;
+            color: #2196F3;
+        }
+
+        .btn-text:hover { background: rgba(33, 150, 243, 0.1); }
+
+        .btn-danger {
+            background: #f44336;
+            color: white;
+        }
+
+        .btn-danger:hover { background: #d32f2f; }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .info-card {
+            background: #E3F2FD;
+            border-left: 4px solid #2196F3;
+            padding: 16px;
+            margin-bottom: 16px;
+            border-radius: 4px;
+        }
+
+        .info-card.warning {
+            background: #FFF3E0;
+            border-left-color: #FF9800;
+        }
+
+        .info-card.success {
+            background: #E8F5E9;
+            border-left-color: #4CAF50;
+        }
+
+        .backup-code {
+            background: #263238;
+            color: #00E676;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 18px;
+            text-align: center;
+            line-height: 1.8;
+            margin: 20px 0;
+            letter-spacing: 2px;
+        }
+
+        .backup-code-group {
+            display: block;
+            margin: 8px 0;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #9e9e9e;
+        }
+
+        .empty-state-icon {
+            font-size: 64px;
+            margin-bottom: 16px;
+            opacity: 0.3;
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #2196F3;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            color: white;
+        }
+
+        .spinner {
+            border: 4px solid rgba(255,255,255,0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .hidden { display: none !important; }
+
+        .panic-btn { animation: pulse 2s infinite; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 48px;
+            height: 24px;
+        }
+
+        .switch input { opacity: 0; width: 0; height: 0; }
+
+        .switch-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: 0.3s;
+            border-radius: 24px;
+        }
+
+        .switch-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+
+        .switch input:checked + .switch-slider { background-color: #2196F3; }
+
+        .switch input:checked + .switch-slider:before { transform: translateX(24px); }
+
+        .fab-menu {
+            position: fixed;
+            bottom: 80px;
+            right: 16px;
+            z-index: 101;
+            display: none;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .fab-menu.active { display: flex; }
+
+        .fab-menu-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: white;
+            padding: 12px 16px;
+            border-radius: 24px;
+            border: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            cursor: pointer;
+            transition: transform 0.2s;
+            min-width: 200px;
+        }
+
+        .fab-menu-item:hover { transform: scale(1.05); }
+
+        .fab-menu-icon { font-size: 24px; }
+
+        .fab-menu-label {
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .fab-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 99;
+            display: none;
+        }
+
+        .fab-overlay.active { display: block; }
+
+        body.dark-mode {
+            background: #121212;
+            color: #e0e0e0;
+        }
+
+        body.dark-mode .app-bar {
+            background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%);
+        }
+
+        body.dark-mode .container { background: #1e1e1e; }
+
+        body.dark-mode .drawer { background: #1e1e1e; }
+
+        body.dark-mode .section-header {
+            background: #2c2c2c;
+            color: #b0b0b0;
+        }
+
+        body.dark-mode .list-item { border-bottom-color: #333; }
+
+        body.dark-mode .list-item:hover { background: #2c2c2c; }
+
+        body.dark-mode .dialog { background: #1e1e1e; }
+
+        body.dark-mode input,
+        body.dark-mode textarea,
+        body.dark-mode select {
+            background: #2c2c2c;
+            border-color: #444;
+            color: #e0e0e0;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-protected {
+            background: #E8F5E9;
+            color: #2E7D32;
+        }
+
+        .status-unprotected {
+            background: #FFF3E0;
+            color: #F57C00;
+        }
+
+        @media (min-width: 768px) {
+            .container {
+                margin-top: 20px;
+                border-radius: 8px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="loadingScreen" class="loading-overlay">
+        <div class="spinner"></div>
+        <h2>PGP Manager</h2>
+        <p style="margin-top: 10px;">Loading...</p>
+    </div>
+
+    <div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+    <div class="drawer" id="drawer">
+        <div class="drawer-header">
+            <h2>🔐 PGP Manager</h2>
+            <p style="font-size: 12px; margin-top: 4px; opacity: 0.9;">Secure & Complete</p>
+        </div>
+        <ul class="drawer-menu">
+            <li><a href="#" onclick="showView('keys'); closeDrawer();"><span class="icon">🔑</span> My Keys</a></li>
+            <li><a href="#" onclick="showView('encrypt'); closeDrawer();"><span class="icon">🔒</span> Encrypt/Decrypt</a></li>
+            <li><a href="#" onclick="showView('sign'); closeDrawer();"><span class="icon">✍️</span> Sign/Verify</a></li>
+            <li><a href="#" onclick="showView('symmetric'); closeDrawer();"><span class="icon">🔐</span> AES Encryption</a></li>
+            <li><a href="#" onclick="showView('tools'); closeDrawer();"><span class="icon">🛠️</span> Tools</a></li>
+            <li><a href="#" onclick="showView('backup'); closeDrawer();"><span class="icon">💾</span> Backup/Restore</a></li>
+            <li><a href="#" onclick="showView('settings'); closeDrawer();"><span class="icon">⚙️</span> Settings</a></li>
+        </ul>
+    </div>
+
+    <div class="app-bar">
+        <button class="menu-btn" onclick="toggleDrawer()">☰</button>
+        <h1><span id="appTitle">My Keys</span></h1>
+        <button class="menu-btn panic-btn" onclick="panicDestroy()" title="Panic">⚠️</button>
+    </div>
+
+    <div class="container" id="mainContent">
+        <div id="keysView" class="view-content">
+            <div class="section-header">MY KEYS</div>
+            <div id="keysList"></div>
+        </div>
+
+        <div id="encryptView" class="view-content hidden">
+            <div class="section-header">ENCRYPT/DECRYPT</div>
+            <div style="padding: 16px;">
+                <button class="btn btn-primary" style="width: 100%; margin-bottom: 10px;" onclick="showDialog('encryptText')">🔒 Encrypt Message</button>
+                <button class="btn btn-primary" style="width: 100%;" onclick="showDialog('decryptText')">🔓 Decrypt Message</button>
+            </div>
+        </div>
+
+        <div id="signView" class="view-content hidden">
+            <div class="section-header">SIGN/VERIFY</div>
+            <div style="padding: 16px;">
+                <button class="btn btn-primary" style="width: 100%; margin-bottom: 10px;" onclick="showDialog('signText')">✍️ Sign Message</button>
+                <button class="btn btn-primary" style="width: 100%;" onclick="showDialog('verifyText')">✓ Verify Signature</button>
+            </div>
+        </div>
+
+        <div id="symmetricView" class="view-content hidden">
+            <div class="section-header">AES-256 SYMMETRIC ENCRYPTION</div>
+            <div style="padding: 16px;">
+                <div class="info-card">
+                    ℹ️ Symmetric encryption uses a password instead of keys. Both sender and receiver must know the same password.
+                </div>
+                <button class="btn btn-primary" style="width: 100%; margin-bottom: 10px;" onclick="showDialog('aesEncrypt')">🔒 AES Encrypt</button>
+                <button class="btn btn-primary" style="width: 100%;" onclick="showDialog('aesDecrypt')">🔓 AES Decrypt</button>
+            </div>
+        </div>
+
+        <div id="toolsView" class="view-content hidden">
+            <div class="section-header">HASH GENERATOR</div>
+            <div style="padding: 16px;">
+                <textarea id="hashInput" placeholder="Enter text to hash..." style="margin-bottom: 10px;"></textarea>
+                <select id="hashType" style="margin-bottom: 10px;">
+                    <option value="SHA-256">SHA-256</option>
+                    <option value="SHA-512">SHA-512</option>
+                    <option value="SHA-1">SHA-1</option>
+                    <option value="MD5">MD5</option>
+                </select>
+                <button class="btn btn-primary" style="width: 100%;" onclick="generateHash()">Generate Hash</button>
+                <div id="hashOutput" style="margin-top: 10px;"></div>
+            </div>
+
+            <div class="section-header">TEXT TO EMOJI</div>
+            <div style="padding: 16px;">
+                <textarea id="textToEmoji" placeholder="Enter text..." style="margin-bottom: 10px;"></textarea>
+                <button class="btn btn-primary" style="width: 100%; margin-bottom: 5px;" onclick="convertToEmoji()">Convert to Emoji</button>
+                <button class="btn btn-text" style="width: 100%;" onclick="convertFromEmoji()">Convert from Emoji</button>
+                <div id="emojiOutput" style="margin-top: 10px;"></div>
+            </div>
+
+            <div class="section-header">PASSWORD GENERATOR</div>
+            <div style="padding: 16px;">
+                <label>Length: <span id="pwdLengthVal">16</span></label>
+                <input type="range" id="pwdLength" min="8" max="64" value="16" style="width: 100%; margin-bottom: 10px;" oninput="document.getElementById('pwdLengthVal').textContent = this.value">
+                
+                <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                    <input type="checkbox" id="pwdUpper" checked> Uppercase
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                    <input type="checkbox" id="pwdLower" checked> Lowercase
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                    <input type="checkbox" id="pwdNumbers" checked> Numbers
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px;">
+                    <input type="checkbox" id="pwdSymbols" checked> Symbols
+                </label>
+                
+                <button class="btn btn-primary" style="width: 100%;" onclick="generatePassword()">Generate Password</button>
+                <div id="passwordOutput" style="margin-top: 10px;"></div>
+            </div>
+        </div>
+
+        <div id="backupView" class="view-content hidden">
+            <div style="padding: 16px;">
+                <div class="info-card warning">
+                    ⚠️ <strong>Important:</strong> Backups include your private keys. Keep them safe!
+                </div>
+            </div>
+
+            <div class="section-header">BACKUP</div>
+            <div style="padding: 16px;">
+                <button class="btn btn-primary" style="width: 100%; margin-bottom: 10px;" onclick="createFullBackup()">💾 Create Encrypted Backup</button>
+                <button class="btn btn-text" style="width: 100%;" onclick="exportPublicKeysOnly()">📗 Export Public Keys Only</button>
+            </div>
+
+            <div class="section-header">RESTORE</div>
+            <div style="padding: 16px;">
+                <button class="btn btn-primary" style="width: 100%;" onclick="document.getElementById('restoreFile').click()">📥 Restore from Backup</button>
+                <input type="file" id="restoreFile" class="hidden" accept=".pgp,.gpg,.asc" onchange="restoreFromFile(this)">
+            </div>
+        </div>
+
+        <div id="settingsView" class="view-content hidden">
+            <div style="padding: 16px;">
+                <div class="section-header">APPEARANCE</div>
+                <div class="list-item" onclick="toggleTheme()">
+                    <div class="list-item-icon" style="background: #9C27B0;">🌓</div>
+                    <div class="list-item-content">
+                        <div class="list-item-title">Dark/Light Mode</div>
+                        <div class="list-item-subtitle" id="themeStatus">Current: Light Mode</div>
+                    </div>
+                </div>
+
+                <div class="section-header">PRIVACY</div>
+                <div class="list-item">
+                    <div class="list-item-icon" style="background: #FF5722;">💾</div>
+                    <div class="list-item-content">
+                        <div class="list-item-title">Save History</div>
+                        <div class="list-item-subtitle">Keep message history</div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="saveHistoryToggle" onchange="toggleSaveHistory()">
+                        <span class="switch-slider"></span>
+                    </label>
+                </div>
+
+                <div class="section-header">STORAGE</div>
+                <div class="info-card success">
+                    <strong>Storage Status</strong><br>
+                    <div id="storageInfo" style="margin-top: 10px; font-family: monospace; font-size: 13px;"></div>
+                </div>
+                
+                <button class="btn btn-danger" style="width: 100%; margin-top: 10px;" onclick="clearAllData()">🗑️ Delete All Keys</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="fab-menu" id="fabMenu">
+        <button class="fab-menu-item" onclick="showDialog('generateKey'); closeFabMenu();">
+            <span class="fab-menu-icon">🔑</span>
+            <span class="fab-menu-label">Generate Key</span>
+        </button>
+        <button class="fab-menu-item" onclick="showDialog('importPublicKey'); closeFabMenu();">
+            <span class="fab-menu-icon">📗</span>
+            <span class="fab-menu-label">Import Friend's Key</span>
+        </button>
+        <button class="fab-menu-item" onclick="showDialog('importPrivateKey'); closeFabMenu();">
+            <span class="fab-menu-icon">🔒</span>
+            <span class="fab-menu-label">Import Private Key</span>
+        </button>
+    </div>
+    <div class="fab-overlay" id="fabOverlay" onclick="closeFabMenu()"></div>
+    <button class="fab" onclick="toggleFabMenu()">+</button>
+
+    <!-- Dialogs -->
+    <div class="dialog-overlay" id="generateKeyDialog">
+        <div class="dialog">
+            <div class="dialog-header">
+                <div class="dialog-title">Generate New Key</div>
+            </div>
+            <div class="dialog-content">
+                <div class="form-group">
+                    <label>Name</label>
+                    <input type="text" id="genName" placeholder="John Doe">
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="genEmail" placeholder="john@example.com">
+                </div>
+                <div class="form-group">
+                    <label>Passphrase</label>
+                    <input type="password" id="genPassphrase" placeholder="Strong passphrase">
+                </div>
+                <div id="genResult"></div>
+            </div>
+            <div class="dialog-actions">
+                <button class="btn btn-text" onclick="closeDialog('generateKey')">Cancel</button>
+                <button class="btn btn-primary" onclick="generateKeyPair()">Generate</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="dialog-overlay" id="importPublicKeyDialog">
+        <div class="dialog">
+            <div class="dialog-header">
+                <div class="dialog-title">Import Public Key</div>
+            </div>
+            <div class="dialog-content">
+                <textarea id="importPubKey" placeholder="-----BEGIN PGP PUBLIC KEY BLOCK-----"></textarea>
+                <div id="importPubResult"></div>
+            </div>
+            <div class="dialog-actions">
+                <button class="btn btn-text" onclick="closeDialog('importPublicKey')">Cancel</button>
+                <button class="btn btn-primary" onclick="importPublicKey()">Import</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="dialog-overlay" id="importPrivateKeyDialog">
+        <div class="dialog">
+            <div class="dialog-header">
+                <div class="dialog-title">Import Private Key</div>
+            </div>
+            <div class="dialog-content">
+                <textarea id="importPrivKey" placeholder="-----BEGIN PGP PRIVATE KEY BLOCK-----"></textarea>
+                <div id="importPrivResult"></div>
+            </div>
+            <div class="dialog-actions">
+                <button class="btn btn-text" onclick="closeDialog('importPrivateKey')">Cancel</button>
+                <button class="btn btn-primary" onclick="importPrivateKey()">Import</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="dialog-overlay" id="encryptTextDialog">
+        <div class="dialog">
+            <div class="dialog-header">
+                <div class="dialog-title">Encrypt Message</div>
+            </div>
+            <div class="dialog-content">
+                <div class="form-group">
+                    <label>Recipient</label>
+                    <select id="encryptRecipient"></select>
+                </div>
+                <div class="form-group">
+                    <label>Message</label>
+                    <textarea id="encryptMessage"></textarea>
+                </div>
+                <div id="encryptResult"></div>
+            </div>
+            <div class="dialog-actions">
+                <button class="btn btn-text" onclick="closeDialog('encryptText')">Cancel</button>
+                <button class="btn btn-primary" onclick="encryptMessage()">Encrypt</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="dialog-overlay" id="decryptTextDialog">
+        <div class="dialog">
+            <div class="dialog-header">
+                <div class="dialog-title">Decrypt Message</div>
+            </div>
+            <div class="dialog-content">
+                <div class="form-group">
+                    <label>Your Key</label>
+                    <select id="decryptPrivateKey"></select>
+                </div>
+                <div class="form-group">
+                    <label>Passphrase</label>
+                    <input type="password" id="decryptPassphrase">
+                </div>
+                <div class="form-group">
+                    <label>Encrypted Message</label>
+                    <textarea id="decryptMessage"></textarea>
+                </div>
+                <div id="decryptResult"></div>
+            </div>
+            <div class="dialog-actions">
+                <button class="btn btn-text" onclick="closeDialog('decryptText')">Cancel</button>
+                <button class="btn btn-primary" onclick="decryptMessage()">Decrypt</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="dialog-overlay" id="signTextDialog">
+        <div class="dialog">
+            <div class="dialog-header">
+                <div class="dialog-title">Sign Message</div>
+            </div>
+            <div class="dialog-content">
+                <div class="form-group">
+                    <label>Your Key</label>
+                    <select id="signPrivateKey"></select>
+                </div>
+                <div class="form-group">
+                    <label>Passphrase</label>
+                    <input type="password" id="signPassphrase">
+                </div>
+                <div class="form-group">
+                    <label>Message</label>
+                    <textarea id="signMessage"></textarea>
+                </div>
+                <div id="signResult"></div>
+            </div>
+            <div class="dialog-actions">
+                <button class="btn btn-text" onclick="closeDialog('signText')">Cancel</button>
+                <button class="btn btn-primary" onclick="signMessage()">Sign</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="dialog-overlay" id="verifyTextDialog">
+        <div class="dialog">
+            <div class="dialog-header">
+                <div class="dialog-title">Verify Signature</div>
+            </div>
+            <div class="dialog-content">
+                <div class="form-group">
+                    <label>Signed Message</label>
+                    <textarea id="verifyMessage"></textarea>
+                </div>
+                <div id="verifyResult"></div>
+            </div>
+            <div class="dialog-actions">
+                <button class="btn btn-text" onclick="closeDialog('verifyText')">Cancel</button>
+                <button class="btn btn-primary" onclick="verifySignature()">Verify</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="dialog-overlay" id="aesEncryptDialog">
+        <div class="dialog">
+            <div class="dialog-header">
+                <div class="dialog-title">AES Encrypt</div>
+            </div>
+            <div class="dialog-content">
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="aesEncryptPwd">
+                </div>
+                <div class="form-group">
+                    <label>Message</label>
+                    <textarea id="aesEncryptMsg"></textarea>
+                </div>
+                <div id="aesEncryptResult"></div>
+            </div>
+            <div class="dialog-actions">
+                <button class="btn btn-text" onclick="closeDialog('aesEncrypt')">Cancel</button>
+                <button class="btn btn-primary" onclick="aesEncrypt()">Encrypt</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="dialog-overlay" id="aesDecryptDialog">
+        <div class="dialog">
+            <div class="dialog-header">
+                <div class="dialog-title">AES Decrypt</div>
+            </div>
+            <div class="dialog-content">
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="aesDecryptPwd">
+                </div>
+                <div class="form-group">
+                    <label>Encrypted Message</label>
+                    <textarea id="aesDecryptMsg"></textarea>
+                </div>
+                <div id="aesDecryptResult"></div>
+            </div>
+            <div class="dialog-actions">
+                <button class="btn btn-text" onclick="closeDialog('aesDecrypt')">Cancel</button>
+                <button class="btn btn-primary" onclick="aesDecrypt()">Decrypt</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="dialog-overlay" id="backupCodeDialog">
+        <div class="dialog">
+            <div class="dialog-header">
+                <div class="dialog-title">Backup Code</div>
+            </div>
+            <div class="dialog-content">
+                <div class="info-card warning">
+                    ⚠️ <strong>Write this down!</strong> You need it to restore.
+                </div>
+                <div class="backup-code" id="backupCodeDisplay"></div>
+                <label style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="backupCodeConfirm">
+                    <span>I have written down this code</span>
+                </label>
+            </div>
+            <div class="dialog-actions">
+                <button class="btn btn-text" onclick="closeDialog('backupCode')">Cancel</button>
+                <button class="btn btn-primary" id="saveBackupBtn" disabled onclick="saveBackupFile()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="dialog-overlay" id="restoreCodeDialog">
+        <div class="dialog">
+            <div class="dialog-header">
+                <div class="dialog-title">Enter Backup Code</div>
+            </div>
+            <div class="dialog-content">
+                <div class="info-card">
+                    Enter the 9-group backup code (36 digits total)
+                </div>
+                <div class="form-group">
+                    <label>Backup Code</label>
+                    <input type="text" id="restoreCode" placeholder="1234-5678-9012-..." maxlength="44">
+                </div>
+            </div>
+            <div class="dialog-actions">
+                <button class="btn btn-text" onclick="closeDialog('restoreCode')">Cancel</button>
+                <button class="btn btn-primary" onclick="decryptBackup()">Restore</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    
+    <script>
+        let keys = { public: [], private: [] };
+        let settings = { saveHistory: false, darkMode: false };
+        let currentBackupData = null;
+        let currentBackupCode = null;
+        let pendingRestoreData = null;
+
+        let loadCheckInterval = setInterval(function() {
+            if (typeof openpgp !== 'undefined') {
+                clearInterval(loadCheckInterval);
+                setTimeout(initApp, 500);
+            }
+        }, 500);
+
+        setTimeout(function() {
+            if (typeof openpgp === 'undefined') {
+                clearInterval(loadCheckInterval);
+                alert('Failed to load. Please refresh.');
+            }
+        }, 10000);
+
+        function initApp() {
+            try {
+                const stored = localStorage.getItem('pgpKeys');
+                keys = stored ? JSON.parse(stored) : { public: [], private: [] };
+            } catch(e) {
+                keys = { public: [], private: [] };
+            }
+
+            try {
+                const storedSettings = localStorage.getItem('pgpSettings');
+                if (storedSettings) {
+                    settings = JSON.parse(storedSettings);
+                    if (settings.darkMode) document.body.classList.add('dark-mode');
+                    document.getElementById('saveHistoryToggle').checked = settings.saveHistory;
+                }
+            } catch(e) {}
+
+            updateKeysList();
+            updateKeySelects();
+            updateStorageInfo();
+            updateThemeStatus();
+            
+            document.getElementById('loadingScreen').style.display = 'none';
+        }
+
+        function toggleDrawer() {
+            document.getElementById('drawer').classList.toggle('active');
+            document.getElementById('drawerOverlay').classList.toggle('active');
+        }
+
+        function closeDrawer() {
+            document.getElementById('drawer').classList.remove('active');
+            document.getElementById('drawerOverlay').classList.remove('active');
+        }
+
+        function showView(viewName) {
+            document.querySelectorAll('.view-content').forEach(v => v.classList.add('hidden'));
+            
+            const viewMap = {
+                'keys': 'keysView',
+                'encrypt': 'encryptView',
+                'sign': 'signView',
+                'symmetric': 'symmetricView',
+                'tools': 'toolsView',
+                'backup': 'backupView',
+                'settings': 'settingsView'
+            };
+            
+            const titleMap = {
+                'keys': 'My Keys',
+                'encrypt': 'Encrypt/Decrypt',
+                'sign': 'Sign/Verify',
+                'symmetric': 'AES Encryption',
+                'tools': 'Tools',
+                'backup': 'Backup/Restore',
+                'settings': 'Settings'
+            };
+            
+            document.getElementById(viewMap[viewName]).classList.remove('hidden');
+            document.getElementById('appTitle').textContent = titleMap[viewName];
+        }
+
+        function showDialog(name) {
+            const map = {
+                'generateKey': 'generateKeyDialog',
+                'importPublicKey': 'importPublicKeyDialog',
+                'importPrivateKey': 'importPrivateKeyDialog',
+                'encryptText': 'encryptTextDialog',
+                'decryptText': 'decryptTextDialog',
+                'signText': 'signTextDialog',
+                'verifyText': 'verifyTextDialog',
+                'aesEncrypt': 'aesEncryptDialog',
+                'aesDecrypt': 'aesDecryptDialog',
+                'backupCode': 'backupCodeDialog',
+                'restoreCode': 'restoreCodeDialog'
+            };
+            if (map[name]) document.getElementById(map[name]).classList.add('active');
+        }
+
+        function closeDialog(name) {
+            const map = {
+                'generateKey': 'generateKeyDialog',
+                'importPublicKey': 'importPublicKeyDialog',
+                'importPrivateKey': 'importPrivateKeyDialog',
+                'encryptText': 'encryptTextDialog',
+                'decryptText': 'decryptTextDialog',
+                'signText': 'signTextDialog',
+                'verifyText': 'verifyTextDialog',
+                'aesEncrypt': 'aesEncryptDialog',
+                'aesDecrypt': 'aesDecryptDialog',
+                'backupCode': 'backupCodeDialog',
+                'restoreCode': 'restoreCodeDialog'
+            };
+            if (map[name]) document.getElementById(map[name]).classList.remove('active');
+        }
+
+        function toggleFabMenu() {
+            document.getElementById('fabMenu').classList.toggle('active');
+            document.getElementById('fabOverlay').classList.toggle('active');
+        }
+
+        function closeFabMenu() {
+            document.getElementById('fabMenu').classList.remove('active');
+            document.getElementById('fabOverlay').classList.remove('active');
+        }
+
+        async function generateKeyPair() {
+            const name = document.getElementById('genName').value.trim();
+            const email = document.getElementById('genEmail').value.trim();
+            const passphrase = document.getElementById('genPassphrase').value;
+            const resultDiv = document.getElementById('genResult');
+
+            if (!name || !email) {
+                resultDiv.innerHTML = '<div class="info-card warning">Enter name and email</div>';
+                return;
+            }
+
+            resultDiv.innerHTML = '<div class="spinner" style="margin: 20px auto;"></div>';
+
+            try {
+                const { privateKey, publicKey } = await openpgp.generateKey({
+                    type: 'ecc',
+                    curve: 'curve25519',
+                    userIDs: [{ name, email }],
+                    passphrase: passphrase || undefined
+                });
+
+                const keyId = email + '_' + Date.now();
+                keys.public.push({ id: keyId, name, email, key: publicKey, created: new Date().toISOString() });
+                keys.private.push({ id: keyId, name, email, key: privateKey, hasPassphrase: !!passphrase, created: new Date().toISOString() });
+
+                saveKeys();
+                updateKeysList();
+                updateKeySelects();
+
+                resultDiv.innerHTML = '<div class="info-card success">✅ Generated!</div>';
+                setTimeout(() => { closeDialog('generateKey'); resultDiv.innerHTML = ''; }, 2000);
+            } catch (error) {
+                resultDiv.innerHTML = '<div class="info-card warning">Error: ' + error.message + '</div>';
+            }
+        }
+
+        async function importPublicKey() {
+            const keyData = document.getElementById('importPubKey').value.trim();
+            const resultDiv = document.getElementById('importPubResult');
+
+            if (!keyData) {
+                resultDiv.innerHTML = '<div class="info-card warning">Paste key</div>';
+                return;
+            }
+
+            try {
+                const key = await openpgp.readKey({ armoredKey: keyData });
+                const userId = key.users[0].userID;
+                
+                keys.public.push({
+                    id: (userId.email || 'unknown') + '_' + Date.now(),
+                    name: userId.name || userId.email || 'Unknown',
+                    email: userId.email || 'unknown@email.com',
+                    key: keyData,
+                    created: new Date().toISOString()
+                });
+
+                saveKeys();
+                updateKeysList();
+                updateKeySelects();
+                
+                resultDiv.innerHTML = '<div class="info-card success">✅ Imported!</div>';
+                setTimeout(() => { closeDialog('importPublicKey'); document.getElementById('importPubKey').value = ''; resultDiv.innerHTML = ''; }, 2000);
+            } catch (error) {
+                resultDiv.innerHTML = '<div class="info-card warning">Error: ' + error.message + '</div>';
+            }
+        }
+
+        async function importPrivateKey() {
+            const keyData = document.getElementById('importPrivKey').value.trim();
+            const resultDiv = document.getElementById('importPrivResult');
+
+            if (!keyData) {
+                resultDiv.innerHTML = '<div class="info-card warning">Paste key</div>';
+                return;
+            }
+
+            try {
+                const key = await openpgp.readPrivateKey({ armoredKey: keyData });
+                const userId = key.users[0].userID;
+                
+                keys.private.push({
+                    id: (userId.email || 'unknown') + '_' + Date.now(),
+                    name: userId.name || userId.email || 'Unknown',
+                    email: userId.email || 'unknown@email.com',
+                    key: keyData,
+                    hasPassphrase: !key.isDecrypted(),
+                    created: new Date().toISOString()
+                });
+
+                saveKeys();
+                updateKeysList();
+                updateKeySelects();
+                
+                resultDiv.innerHTML = '<div class="info-card success">✅ Imported!</div>';
+                setTimeout(() => { closeDialog('importPrivateKey'); document.getElementById('importPrivKey').value = ''; resultDiv.innerHTML = ''; }, 2000);
+            } catch (error) {
+                resultDiv.innerHTML = '<div class="info-card warning">Error: ' + error.message + '</div>';
+            }
+        }
+
+        function updateKeysList() {
+            const listDiv = document.getElementById('keysList');
+            let html = '';
+
+            if (keys.public.length === 0 && keys.private.length === 0) {
+                html = '<div class="empty-state"><div class="empty-state-icon">🔑</div><div>No keys yet<br>Tap + to create</div></div>';
+            } else {
+                const allKeys = [];
+                
+                keys.private.forEach((k, i) => allKeys.push({ type: 'private', index: i, ...k }));
+                keys.public.forEach((k, i) => {
+                    if (!allKeys.some(ak => ak.email === k.email && ak.type === 'private')) {
+                        allKeys.push({ type: 'public', index: i, ...k });
+                    }
+                });
+
+                allKeys.forEach(k => {
+                    const icon = k.type === 'private' ? '🔒' : '📗';
+                    const badge = k.hasPassphrase ? '<span class="status-badge status-protected">🔒 Protected</span>' : '<span class="status-badge status-unprotected">⚠️ No Pass</span>';
+                    
+                    html += '<div class="list-item" onclick="showKeyActions(\'' + k.type + '\', ' + k.index + ')">';
+                    html += '<div class="list-item-icon" style="background: ' + (k.type === 'private' ? '#4CAF50' : '#2196F3') + ';">' + icon + '</div>';
+                    html += '<div class="list-item-content">';
+                    html += '<div class="list-item-title">' + esc(k.name) + '</div>';
+                    html += '<div class="list-item-subtitle">' + esc(k.email) + '</div>';
+                    html += '<div class="list-item-meta">' + (k.type === 'private' ? 'My Key • ' + badge : 'Contact') + '</div>';
+                    html += '</div></div>';
+                });
+            }
+
+            listDiv.innerHTML = html;
+        }
+
+        function showKeyActions(type, index) {
+            const key = keys[type][index];
+            const actions = confirm('Key: ' + key.name + '\n\n1. Export\n2. Delete\n\nClick OK to export, Cancel to do nothing');
+            if (actions) {
+                const blob = new Blob([key.key], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = key.email + '_' + type + '.asc';
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+        }
+
+        function updateKeySelects() {
+            const e = document.getElementById('encryptRecipient');
+            const d = document.getElementById('decryptPrivateKey');
+            const s = document.getElementById('signPrivateKey');
+
+            e.innerHTML = '<option value="">Select...</option>';
+            keys.public.forEach((k, i) => e.innerHTML += '<option value="' + i + '">' + esc(k.name) + '</option>');
+
+            d.innerHTML = '<option value="">Select...</option>';
+            keys.private.forEach((k, i) => d.innerHTML += '<option value="' + i + '">' + esc(k.name) + '</option>');
+
+            s.innerHTML = '<option value="">Select...</option>';
+            keys.private.forEach((k, i) => s.innerHTML += '<option value="' + i + '">' + esc(k.name) + '</option>');
+        }
+
+        async function encryptMessage() {
+            const idx = document.getElementById('encryptRecipient').value;
+            const msg = document.getElementById('encryptMessage').value;
+            const resultDiv = document.getElementById('encryptResult');
+
+            if (!idx || !msg) {
+                resultDiv.innerHTML = '<div class="info-card warning">Fill all fields</div>';
+                return;
+            }
+
+            try {
+                resultDiv.innerHTML = '<div class="spinner" style="margin: 20px auto;"></div>';
+
+                const publicKey = await openpgp.readKey({ armoredKey: keys.public[idx].key });
+                const encrypted = await openpgp.encrypt({
+                    message: await openpgp.createMessage({ text: msg }),
+                    encryptionKeys: publicKey
+                });
+
+                resultDiv.innerHTML = '<div class="info-card success">✅ Encrypted!</div><textarea readonly>' + esc(encrypted) + '</textarea><button class="btn btn-primary" style="width:100%; margin-top:10px;" onclick="copy(this.previousElementSibling.value)">Copy</button>';
+            } catch (error) {
+                resultDiv.innerHTML = '<div class="info-card warning">Error: ' + error.message + '</div>';
+            }
+        }
+
+        async function decryptMessage() {
+            const idx = document.getElementById('decryptPrivateKey').value;
+            const pass = document.getElementById('decryptPassphrase').value;
+            const msg = document.getElementById('decryptMessage').value.trim();
+            const resultDiv = document.getElementById('decryptResult');
+
+            if (!idx || !msg) {
+                resultDiv.innerHTML = '<div class="info-card warning">Fill all fields</div>';
+                return;
+            }
+
+            try {
+                resultDiv.innerHTML = '<div class="spinner" style="margin: 20px auto;"></div>';
+
+                let privateKey = await openpgp.readPrivateKey({ armoredKey: keys.private[idx].key });
+                
+                if (!privateKey.isDecrypted() && pass) {
+                    privateKey = await openpgp.decryptKey({ privateKey, passphrase: pass });
+                }
+
+                const message = await openpgp.readMessage({ armoredMessage: msg });
+                const { data: decrypted } = await openpgp.decrypt({ message, decryptionKeys: privateKey });
+
+                resultDiv.innerHTML = '<div class="info-card success">✅ Decrypted!</div><textarea readonly>' + esc(decrypted) + '</textarea><button class="btn btn-primary" style="width:100%; margin-top:10px;" onclick="copy(this.previousElementSibling.value)">Copy</button>';
+            } catch (error) {
+                resultDiv.innerHTML = '<div class="info-card warning">Error (check passphrase)</div>';
+            }
+        }
+
+        async function signMessage() {
+            const idx = document.getElementById('signPrivateKey').value;
+            const pass = document.getElementById('signPassphrase').value;
+            const msg = document.getElementById('signMessage').value;
+            const resultDiv = document.getElementById('signResult');
+
+            if (!idx || !msg) {
+                resultDiv.innerHTML = '<div class="info-card warning">Fill all fields</div>';
+                return;
+            }
+
+            try {
+                resultDiv.innerHTML = '<div class="spinner" style="margin: 20px auto;"></div>';
+
+                let privateKey = await openpgp.readPrivateKey({ armoredKey: keys.private[idx].key });
+                
+                if (!privateKey.isDecrypted() && pass) {
+                    privateKey = await openpgp.decryptKey({ privateKey, passphrase: pass });
+                }
+
+                const signed = await openpgp.sign({
+                    message: await openpgp.createCleartextMessage({ text: msg }),
+                    signingKeys: privateKey
+                });
+
+                resultDiv.innerHTML = '<div class="info-card success">✅ Signed!</div><textarea readonly>' + esc(signed) + '</textarea><button class="btn btn-primary" style="width:100%; margin-top:10px;" onclick="copy(this.previousElementSibling.value)">Copy</button>';
+            } catch (error) {
+                resultDiv.innerHTML = '<div class="info-card warning">Error: ' + error.message + '</div>';
+            }
+        }
+
+        async function verifySignature() {
+            const msg = document.getElementById('verifyMessage').value.trim();
+            const resultDiv = document.getElementById('verifyResult');
+
+            if (!msg) {
+                resultDiv.innerHTML = '<div class="info-card warning">Paste signed message</div>';
+                return;
+            }
+
+            try {
+                resultDiv.innerHTML = '<div class="spinner" style="margin: 20px auto;"></div>';
+
+                const message = await openpgp.readCleartextMessage({ cleartextMessage: msg });
+                
+                let verified = false;
+                let verifiedBy = 'Unknown';
+                
+                for (let pubKey of keys.public) {
+                    try {
+                        const key = await openpgp.readKey({ armoredKey: pubKey.key });
+                        const result = await openpgp.verify({ message, verificationKeys: key });
+                        const { verified: isVerified } = result.signatures[0];
+                        await isVerified;
+                        
+                        verified = true;
+                        verifiedBy = pubKey.name;
+                        break;
+                    } catch(e) {}
+                }
+
+                if (verified) {
+                    resultDiv.innerHTML = '<div class="info-card success">✅ Valid signature by: ' + esc(verifiedBy) + '</div><textarea readonly>' + esc(message.getText()) + '</textarea>';
+                } else {
+                    resultDiv.innerHTML = '<div class="info-card warning">⚠️ Could not verify (key not in keyring)</div>';
+                }
+            } catch (error) {
+                resultDiv.innerHTML = '<div class="info-card warning">Error: ' + error.message + '</div>';
+            }
+        }
+
+        async function aesEncrypt() {
+            const pwd = document.getElementById('aesEncryptPwd').value;
+            const msg = document.getElementById('aesEncryptMsg').value;
+            const resultDiv = document.getElementById('aesEncryptResult');
+
+            if (!pwd || !msg) {
+                resultDiv.innerHTML = '<div class="info-card warning">Fill all fields</div>';
+                return;
+            }
+
+            try {
+                resultDiv.innerHTML = '<div class="spinner" style="margin: 20px auto;"></div>';
+
+                const encrypted = await openpgp.encrypt({
+                    message: await openpgp.createMessage({ text: msg }),
+                    passwords: [pwd],
+                    format: 'armored'
+                });
+
+                resultDiv.innerHTML = '<div class="info-card success">✅ AES Encrypted!</div><textarea readonly>' + esc(encrypted) + '</textarea><button class="btn btn-primary" style="width:100%; margin-top:10px;" onclick="copy(this.previousElementSibling.value)">Copy</button>';
+            } catch (error) {
+                resultDiv.innerHTML = '<div class="info-card warning">Error: ' + error.message + '</div>';
+            }
+        }
+
+        async function aesDecrypt() {
+            const pwd = document.getElementById('aesDecryptPwd').value;
+            const msg = document.getElementById('aesDecryptMsg').value.trim();
+            const resultDiv = document.getElementById('aesDecryptResult');
+
+            if (!pwd || !msg) {
+                resultDiv.innerHTML = '<div class="info-card warning">Fill all fields</div>';
+                return;
+            }
+
+            try {
+                resultDiv.innerHTML = '<div class="spinner" style="margin: 20px auto;"></div>';
+
+                const message = await openpgp.readMessage({ armoredMessage: msg });
+                const { data: decrypted } = await openpgp.decrypt({
+                    message,
+                    passwords: [pwd]
+                });
+
+                resultDiv.innerHTML = '<div class="info-card success">✅ AES Decrypted!</div><textarea readonly>' + esc(decrypted) + '</textarea><button class="btn btn-primary" style="width:100%; margin-top:10px;" onclick="copy(this.previousElementSibling.value)">Copy</button>';
+            } catch (error) {
+                resultDiv.innerHTML = '<div class="info-card warning">Wrong password or invalid data</div>';
+            }
+        }
+
+        async function generateHash() {
+            const text = document.getElementById('hashInput').value;
+            const type = document.getElementById('hashType').value;
+            const output = document.getElementById('hashOutput');
+
+            if (!text) {
+                output.innerHTML = '<div class="info-card warning">Enter text</div>';
+                return;
+            }
+
+            try {
+                const encoder = new TextEncoder();
+                const data = encoder.encode(text);
+                
+                let hashBuffer;
+                if (type === 'SHA-256') {
+                    hashBuffer = await crypto.subtle.digest('SHA-256', data);
+                } else if (type === 'SHA-512') {
+                    hashBuffer = await crypto.subtle.digest('SHA-512', data);
+                } else if (type === 'SHA-1') {
+                    hashBuffer = await crypto.subtle.digest('SHA-1', data);
+                } else {
+                    // MD5 fallback (simple implementation)
+                    output.innerHTML = '<div class="info-card warning">MD5 not available in browser</div>';
+                    return;
+                }
+                
+                const hashArray = Array.from(new Uint8Array(hashBuffer));
+                const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+                
+                output.innerHTML = '<div class="info-card success"><strong>' + type + ':</strong></div><textarea readonly style="min-height: 60px;">' + hashHex + '</textarea><button class="btn btn-primary" style="width:100%; margin-top:10px;" onclick="copy(this.previousElementSibling.value)">Copy Hash</button>';
+            } catch (error) {
+                output.innerHTML = '<div class="info-card warning">Error: ' + error.message + '</div>';
+            }
+        }
+
+        function convertToEmoji() {
+            const text = document.getElementById('textToEmoji').value;
+            const output = document.getElementById('emojiOutput');
+
+            if (!text) {
+                output.innerHTML = '<div class="info-card warning">Enter text</div>';
+                return;
+            }
+
+            const emojis = ['😀','😁','😂','😃','😄','😅','😆','😇','😈','😉','😊','😋','😌','😍','😎','😏','😐','😑','😒','😓','😔','😕','😖','😗','😘','😙','😚','😛','😜','😝','😞','😟','😠','😡','😢','😣','😤','😥','😦','😧','😨','😩','😪','😫','😬','😭','😮','😯','😰','😱','😲','😳','😴','😵','😶','😷','🙁','🙂','🙃','🙄','🤐','🤑','🤒','🤓','🤔','🤕','🤗','🤠','🤡','🤢','🤣','🤤','🤥','🤧','🤨','🤩','🤪','🤫','🤬','🤭','🤮','🤯','🧐'];
+            
+            let result = '';
+            for (let i = 0; i < text.length; i++) {
+                const code = text.charCodeAt(i) % emojis.length;
+                result += emojis[code];
+            }
+            
+            output.innerHTML = '<div class="info-card success">Emoji encoded:</div><textarea readonly>' + result + '</textarea><button class="btn btn-primary" style="width:100%; margin-top:10px;" onclick="copy(this.previousElementSibling.value)">Copy</button>';
+        }
+
+        function convertFromEmoji() {
+            const text = document.getElementById('textToEmoji').value;
+            const output = document.getElementById('emojiOutput');
+
+            output.innerHTML = '<div class="info-card warning">⚠️ Emoji to text conversion is lossy and not fully reversible due to character mapping limitations.</div>';
+        }
+
+        function generatePassword() {
+            const length = parseInt(document.getElementById('pwdLength').value);
+            const upper = document.getElementById('pwdUpper').checked;
+            const lower = document.getElementById('pwdLower').checked;
+            const numbers = document.getElementById('pwdNumbers').checked;
+            const symbols = document.getElementById('pwdSymbols').checked;
+            const output = document.getElementById('passwordOutput');
+
+            let charset = '';
+            if (upper) charset += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+            if (lower) charset += 'abcdefghijklmnopqrstuvwxyz';
+            if (numbers) charset += '0123456789';
+            if (symbols) charset += '!@#$%^&*()_+-=[]{}|;:,.<>?';
+
+            if (!charset) {
+                output.innerHTML = '<div class="info-card warning">Select at least one option</div>';
+                return;
+            }
+
+            let password = '';
+            const array = new Uint32Array(length);
+            crypto.getRandomValues(array);
+            for (let i = 0; i < length; i++) {
+                password += charset[array[i] % charset.length];
+            }
+
+            output.innerHTML = '<div class="info-card success">Generated password:</div><textarea readonly style="min-height: 60px; font-size: 16px;">' + esc(password) + '</textarea><button class="btn btn-primary" style="width:100%; margin-top:10px;" onclick="copy(this.previousElementSibling.value)">Copy Password</button>';
+        }
+
+        function generateBackupCode() {
+            const groups = [];
+            for (let i = 0; i < 9; i++) {
+                groups.push(Math.floor(1000 + Math.random() * 9000).toString());
+            }
+            return groups;
+        }
+
+        async function createFullBackup() {
+            if (keys.public.length === 0 && keys.private.length === 0) {
+                alert('No keys to backup');
+                return;
+            }
+
+            const code = generateBackupCode();
+            currentBackupCode = code.join('-');
+            
+            let codeHtml = '';
+            for (let i = 0; i < code.length; i += 3) {
+                codeHtml += '<span class="backup-code-group">' + code.slice(i, i + 3).join('-') + '</span>';
+            }
+            
+            document.getElementById('backupCodeDisplay').innerHTML = codeHtml;
+            
+            try {
+                // Create backup data
+                const backupText = JSON.stringify({
+                    version: '1.0',
+                    timestamp: new Date().toISOString(),
+                    keys: keys
+                });
+
+                // Encrypt with backup code as password
+                const encrypted = await openpgp.encrypt({
+                    message: await openpgp.createMessage({ text: backupText }),
+                    passwords: [currentBackupCode],
+                    format: 'armored'
+                });
+
+                // Add header with hint
+                currentBackupData = '-----BEGIN PGP MESSAGE-----\n' +
+                    'Passphrase-Format: numeric9x4\n' +
+                    'Passphrase-Begin: ' + code[0].substring(0, 2) + '\n\n' +
+                    encrypted.split('\n').slice(3).join('\n');
+
+                showDialog('backupCode');
+                
+                document.getElementById('backupCodeConfirm').checked = false;
+                document.getElementById('saveBackupBtn').disabled = true;
+                
+                document.getElementById('backupCodeConfirm').onchange = function() {
+                    document.getElementById('saveBackupBtn').disabled = !this.checked;
+                };
+            } catch (error) {
+                alert('Error creating backup: ' + error.message);
+            }
+        }
+
+        function saveBackupFile() {
+            if (!currentBackupData) return;
+            
+            const blob = new Blob([currentBackupData], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const date = new Date().toISOString().split('T')[0];
+            a.download = 'backup_' + date + '_sec.pgp';
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            closeDialog('backupCode');
+            alert('✅ Backup saved! Keep code safe!');
+            
+            currentBackupData = null;
+            currentBackupCode = null;
+        }
+
+        function exportPublicKeysOnly() {
+            if (keys.public.length === 0) {
+                alert('No public keys');
+                return;
+            }
+
+            let allKeys = '';
+            keys.public.forEach(k => allKeys += k.key + '\n\n');
+
+            const blob = new Blob([allKeys], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'public_keys_' + Date.now() + '.asc';
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            alert('✅ Public keys exported!');
+        }
+
+        function restoreFromFile(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const content = e.target.result;
+                
+                // Check if it's encrypted backup
+                if (content.includes('-----BEGIN PGP MESSAGE-----')) {
+                    pendingRestoreData = content;
+                    showDialog('restoreCode');
+                } else {
+                    alert('Invalid backup file');
+                }
+            };
+            reader.readAsText(file);
+            
+            input.value = '';
+        }
+
+        async function decryptBackup() {
+            const code = document.getElementById('restoreCode').value.trim();
+            
+            if (!code || !pendingRestoreData) {
+                alert('Enter backup code');
+                return;
+            }
+
+            try {
+                const message = await openpgp.readMessage({ armoredMessage: pendingRestoreData });
+                const { data: decrypted } = await openpgp.decrypt({
+                    message,
+                    passwords: [code]
+                });
+
+                const data = JSON.parse(decrypted);
+                
+                if (data.keys) {
+                    if (confirm('Import ' + (data.keys.public.length + data.keys.private.length) + ' keys?')) {
+                        keys.public = keys.public.concat(data.keys.public || []);
+                        keys.private = keys.private.concat(data.keys.private || []);
+                        
+                        saveKeys();
+                        updateKeysList();
+                        updateKeySelects();
+                        
+                        closeDialog('restoreCode');
+                        alert('✅ Restored!');
+                        
+                        pendingRestoreData = null;
+                        document.getElementById('restoreCode').value = '';
+                    }
+                } else {
+                    alert('Invalid backup format');
+                }
+            } catch (error) {
+                alert('Wrong code or corrupted backup');
+            }
+        }
+
+        function panicDestroy() {
+            if (confirm('🚨 PANIC! Delete EVERYTHING?')) {
+                if (confirm('FINAL WARNING! Really?')) {
+                    localStorage.clear();
+                    keys = { public: [], private: [] };
+                    updateKeysList();
+                    updateKeySelects();
+                    alert('💥 Everything destroyed');
+                    setTimeout(() => location.reload(), 1000);
+                }
+            }
+        }
+
+        function toggleTheme() {
+            settings.darkMode = !settings.darkMode;
+            saveSettings();
+            document.body.classList.toggle('dark-mode');
+            updateThemeStatus();
+        }
+
+        function updateThemeStatus() {
+            document.getElementById('themeStatus').textContent = 'Current: ' + (settings.darkMode ? 'Dark' : 'Light') + ' Mode';
+        }
+
+        function toggleSaveHistory() {
+            settings.saveHistory = document.getElementById('saveHistoryToggle').checked;
+            saveSettings();
+        }
+
+        function saveSettings() {
+            localStorage.setItem('pgpSettings', JSON.stringify(settings));
+        }
+
+        function clearAllData() {
+            if (confirm('Delete all ' + (keys.public.length + keys.private.length) + ' keys?')) {
+                localStorage.removeItem('pgpKeys');
+                keys = { public: [], private: [] };
+                updateKeysList();
+                updateKeySelects();
+                alert('✅ Deleted');
+            }
+        }
+
+        function updateStorageInfo() {
+            const total = keys.public.length + keys.private.length;
+            const size = new Blob([JSON.stringify(keys)]).size;
+            document.getElementById('storageInfo').innerHTML = 
+                'Keys: ' + total + '<br>Size: ' + (size / 1024).toFixed(2) + ' KB<br>Status: ♾️ Permanent';
+        }
+
+        function saveKeys() {
+            localStorage.setItem('pgpKeys', JSON.stringify(keys));
+            updateStorageInfo();
+        }
+
+        function copy(text) {
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(() => alert('✅ Copied!'));
+            } else {
+                const t = document.createElement('textarea');
+                t.value = text;
+                t.style.position = 'fixed';
+                t.style.opacity = '0';
+                document.body.appendChild(t);
+                t.select();
+                document.execCommand('copy');
+                document.body.removeChild(t);
+                alert('✅ Copied!');
+            }
+        }
+
+        function esc(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
