@@ -1,0 +1,1493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PGP QR Manager - Local & Secure</title>
+    
+    <!-- Load OpenPGP.js from multiple CDN sources -->
+    <script>
+        window.pgpLoadAttempts = 0;
+        window.maxLoadAttempts = 3;
+        
+        function loadOpenPGP() {
+            const cdns = [
+                'https://unpkg.com/openpgp@5.10.2/dist/openpgp.min.js',
+                'https://cdn.jsdelivr.net/npm/openpgp@5.10.2/dist/openpgp.min.js'
+            ];
+            
+            const script = document.createElement('script');
+            script.src = cdns[window.pgpLoadAttempts % cdns.length];
+            script.async = false;
+            
+            script.onload = function() {
+                console.log('✓ OpenPGP loaded from:', script.src);
+                window.openpgpLoaded = true;
+            };
+            
+            script.onerror = function() {
+                console.warn('✗ Failed loading from:', script.src);
+                window.pgpLoadAttempts++;
+                if (window.pgpLoadAttempts < window.maxLoadAttempts) {
+                    setTimeout(loadOpenPGP, 500);
+                }
+            };
+            
+            document.head.appendChild(script);
+        }
+        
+        loadOpenPGP();
+    </script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .tabs {
+            display: flex;
+            background: #f5f5f5;
+            border-bottom: 2px solid #ddd;
+            flex-wrap: wrap;
+        }
+
+        .tab {
+            flex: 1;
+            min-width: 150px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 600;
+            border: none;
+            background: transparent;
+            font-size: 1em;
+        }
+
+        .tab:hover {
+            background: #e0e0e0;
+        }
+
+        .tab.active {
+            background: white;
+            color: #667eea;
+            border-bottom: 3px solid #667eea;
+        }
+
+        .tab-content {
+            display: none;
+            padding: 30px;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .section {
+            margin-bottom: 30px;
+            padding: 25px;
+            background: #f9f9f9;
+            border-radius: 10px;
+            border: 1px solid #e0e0e0;
+        }
+
+        .section h3 {
+            margin-bottom: 20px;
+            color: #333;
+            font-size: 1.4em;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        input[type="text"],
+        input[type="email"],
+        input[type="password"],
+        textarea,
+        select {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+
+        input:focus,
+        textarea:focus,
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        textarea {
+            min-height: 150px;
+            font-family: 'Courier New', monospace;
+            resize: vertical;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        button.secondary {
+            background: #6c757d;
+        }
+
+        button.danger {
+            background: #dc3545;
+        }
+
+        .video-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            margin: 20px auto;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        video {
+            width: 100%;
+            display: block;
+        }
+
+        canvas {
+            display: none;
+        }
+
+        .key-list {
+            list-style: none;
+        }
+
+        .key-item {
+            background: white;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .key-info {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .key-info strong {
+            color: #667eea;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .key-actions {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+
+        .key-actions button {
+            padding: 8px 15px;
+            font-size: 0.9em;
+            margin: 0;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border-left: 4px solid #28a745;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border-left: 4px solid #dc3545;
+        }
+
+        .warning {
+            background: #fff3cd;
+            color: #856404;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border-left: 4px solid #ffc107;
+        }
+
+        .qr-display {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+        }
+
+        #generatedQR {
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+        }
+
+        .file-input-wrapper input[type=file] {
+            position: absolute;
+            left: -9999px;
+        }
+
+        .file-input-label {
+            background: #6c757d;
+            color: white;
+            padding: 12px 30px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: inline-block;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .file-input-label:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(108, 117, 125, 0.4);
+        }
+
+        .alert-box {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border-left: 4px solid #17a2b8;
+        }
+
+        .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            color: white;
+        }
+
+        .loading-screen h2 {
+            margin-top: 20px;
+            font-size: 1.5em;
+        }
+
+        .loading-screen p {
+            margin-top: 10px;
+            opacity: 0.9;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.8em;
+            }
+            
+            .key-item {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .key-actions {
+                margin-top: 10px;
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="loadingScreen" class="loading-screen">
+        <div class="loader"></div>
+        <h2>🔐 Loading PGP Manager</h2>
+        <p>Initializing encryption libraries...</p>
+        <p id="loadStatus" style="margin-top: 20px; font-size: 0.9em;"></p>
+    </div>
+
+    <div class="container" style="display: none;" id="mainContent">
+        <div class="header">
+            <h1>🔐 PGP QR Manager</h1>
+            <p>Secure, Local, Open Source PGP Key Management with QR Code Support</p>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab(event, 'keys')">🔑 Keys</button>
+            <button class="tab" onclick="switchTab(event, 'encrypt')">🔒 Encrypt</button>
+            <button class="tab" onclick="switchTab(event, 'decrypt')">🔓 Decrypt</button>
+            <button class="tab" onclick="switchTab(event, 'qr')">📱 Scan QR</button>
+            <button class="tab" onclick="switchTab(event, 'qr-gen')">📊 Generate QR</button>
+        </div>
+
+        <!-- Key Management Tab -->
+        <div id="keys" class="tab-content active">
+            <div class="section">
+                <h3>Generate New Key Pair</h3>
+                <div class="alert-box alert-info">
+                    ℹ️ Keys are generated locally in your browser and never sent anywhere. Store them securely!
+                </div>
+                <label>Name:</label>
+                <input type="text" id="genName" placeholder="John Doe">
+                
+                <label>Email:</label>
+                <input type="email" id="genEmail" placeholder="john@example.com">
+                
+                <label>Passphrase (optional but recommended):</label>
+                <input type="password" id="genPassphrase" placeholder="Strong passphrase">
+                
+                <label>Key Type:</label>
+                <select id="keyType">
+                    <option value="rsa">RSA 4096-bit (More compatible)</option>
+                    <option value="ecc">ECC Curve25519 (Faster, modern)</option>
+                </select>
+                
+                <button onclick="generateKeyPair()" id="generateBtn">Generate Key Pair</button>
+                <div id="genResult"></div>
+            </div>
+
+            <div class="section">
+                <h3>Import Keys</h3>
+                <label>Public Key:</label>
+                <textarea id="importPublicKey" placeholder="-----BEGIN PGP PUBLIC KEY BLOCK-----
+...
+-----END PGP PUBLIC KEY BLOCK-----"></textarea>
+                
+                <label>Private Key (optional):</label>
+                <textarea id="importPrivateKey" placeholder="-----BEGIN PGP PRIVATE KEY BLOCK-----
+...
+-----END PGP PRIVATE KEY BLOCK-----"></textarea>
+                
+                <button onclick="importKeys()">Import Keys</button>
+            </div>
+
+            <div class="section">
+                <h3>Stored Keys</h3>
+                <div id="keyList"></div>
+                
+                <div style="margin-top: 20px; padding: 20px; background: #e8f4f8; border-radius: 8px; border-left: 4px solid #17a2b8;">
+                    <h4 style="margin-bottom: 15px; color: #0c5460;">♾️ Permanent Browser Storage</h4>
+                    <p style="margin-bottom: 15px; color: #0c5460;">Your keys are automatically saved in your browser's localStorage and will persist forever (until you clear browser data or delete them manually).</p>
+                    
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px;">
+                        <button onclick="exportAllKeys()" class="secondary">💾 Backup All Keys</button>
+                        <button onclick="importAllKeys()" class="secondary">📥 Restore from Backup</button>
+                        <button onclick="clearAllData()" class="danger">🗑️ Delete All Keys</button>
+                    </div>
+                    
+                    <div id="storageStatus" style="margin-top: 15px; padding: 10px; background: white; border-radius: 5px; font-family: monospace; font-size: 0.9em;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Encrypt Tab -->
+        <div id="encrypt" class="tab-content">
+            <div class="section">
+                <h3>Encrypt Message or File</h3>
+                
+                <label>Recipient's Public Key:</label>
+                <select id="encryptRecipient">
+                    <option value="">Select a stored key...</option>
+                </select>
+                
+                <label>Or paste public key:</label>
+                <textarea id="encryptPubKey" placeholder="Paste recipient's public key..."></textarea>
+                
+                <label>Message to Encrypt:</label>
+                <textarea id="encryptMessage" placeholder="Type your secret message here..."></textarea>
+                
+                <div class="file-input-wrapper">
+                    <label class="file-input-label" for="encryptFile">📎 Or Choose File</label>
+                    <input type="file" id="encryptFile" onchange="handleEncryptFile(this)">
+                </div>
+                <div id="encryptFileInfo"></div>
+                
+                <div class="button-group">
+                    <button onclick="encryptData()">🔒 Encrypt</button>
+                    <button onclick="clearEncrypt()" class="secondary">Clear</button>
+                </div>
+                
+                <div id="encryptResult"></div>
+            </div>
+        </div>
+
+        <!-- Decrypt Tab -->
+        <div id="decrypt" class="tab-content">
+            <div class="section">
+                <h3>Decrypt Message or File</h3>
+                
+                <label>Your Private Key:</label>
+                <select id="decryptPrivateKey">
+                    <option value="">Select a stored key...</option>
+                </select>
+                
+                <label>Or paste private key:</label>
+                <textarea id="decryptPrivKey" placeholder="Paste your private key..."></textarea>
+                
+                <label>Passphrase (if key is protected):</label>
+                <input type="password" id="decryptPassphrase" placeholder="Enter passphrase">
+                
+                <label>Encrypted Message:</label>
+                <textarea id="decryptMessage" placeholder="-----BEGIN PGP MESSAGE-----
+...
+-----END PGP MESSAGE-----"></textarea>
+                
+                <div class="file-input-wrapper">
+                    <label class="file-input-label" for="decryptFile">📎 Or Choose Encrypted File</label>
+                    <input type="file" id="decryptFile" onchange="handleDecryptFile(this)">
+                </div>
+                <div id="decryptFileInfo"></div>
+                
+                <div class="button-group">
+                    <button onclick="decryptData()">🔓 Decrypt</button>
+                    <button onclick="clearDecrypt()" class="secondary">Clear</button>
+                </div>
+                
+                <div id="decryptResult"></div>
+            </div>
+        </div>
+
+        <!-- QR Scanner Tab -->
+        <div id="qr" class="tab-content">
+            <div class="section">
+                <h3>Scan QR Code</h3>
+                <div class="alert-box alert-info">
+                    ℹ️ Scan QR codes containing PGP keys or encrypted messages. All processing is done locally.
+                </div>
+                
+                <div class="button-group">
+                    <button onclick="startQRScanner()">📷 Start Camera</button>
+                    <button onclick="stopQRScanner()" class="secondary">Stop Camera</button>
+                    <div class="file-input-wrapper">
+                        <label class="file-input-label" for="qrImageFile">🖼️ Upload QR Image</label>
+                        <input type="file" id="qrImageFile" accept="image/*" onchange="scanQRFromImage(this)">
+                    </div>
+                </div>
+                
+                <div class="video-container" id="videoContainer" style="display: none;">
+                    <video id="qrVideo" autoplay playsinline></video>
+                </div>
+                
+                <canvas id="qrCanvas"></canvas>
+                
+                <div id="qrResult"></div>
+                
+                <div id="qrActions" style="display: none; margin-top: 20px;">
+                    <button onclick="useQRAsPublicKey()">Use as Public Key</button>
+                    <button onclick="useQRAsPrivateKey()">Use as Private Key</button>
+                    <button onclick="useQRAsEncrypted()">Use as Encrypted Message</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Generate QR Tab -->
+        <div id="qr-gen" class="tab-content">
+            <div class="section">
+                <h3>Generate QR Code</h3>
+                
+                <label>Select Key to Convert:</label>
+                <select id="qrKeySelect" onchange="loadKeyForQR()">
+                    <option value="">Select a key...</option>
+                </select>
+                
+                <label>Or enter text/key manually:</label>
+                <textarea id="qrTextInput" placeholder="Enter text, PGP key, or encrypted message..."></textarea>
+                
+                <label>QR Code Size:</label>
+                <select id="qrSize">
+                    <option value="256">Small (256x256)</option>
+                    <option value="512" selected>Medium (512x512)</option>
+                    <option value="1024">Large (1024x1024)</option>
+                </select>
+                
+                <div class="button-group">
+                    <button onclick="generateQRCode()">Generate QR Code</button>
+                    <button onclick="downloadQR()" class="secondary">Download QR</button>
+                    <button onclick="clearQRGen()" class="secondary">Clear</button>
+                </div>
+                
+                <div class="qr-display">
+                    <div id="generatedQR"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- QR Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    
+    <script>
+        // Global variables
+        let keys = {};
+        let qrScanning = false;
+        let videoStream = null;
+        let lastQRData = '';
+        let currentQRCode = null;
+
+        // Wait for all libraries to load
+        let loadCheckInterval = setInterval(function() {
+            const status = document.getElementById('loadStatus');
+            
+            if (typeof openpgp !== 'undefined') {
+                clearInterval(loadCheckInterval);
+                status.textContent = '✓ Encryption library loaded';
+                setTimeout(initApp, 500);
+            } else {
+                status.textContent = 'Loading encryption library... (attempt ' + (Math.floor(Date.now() / 1000) % 10) + ')';
+            }
+        }, 500);
+
+        // Timeout after 10 seconds
+        setTimeout(function() {
+            if (typeof openpgp === 'undefined') {
+                clearInterval(loadCheckInterval);
+                document.getElementById('loadingScreen').innerHTML = 
+                    '<div class="error" style="max-width: 600px; margin: 0 auto;"><h2>⚠️ Loading Error</h2>' +
+                    '<p>Could not load encryption library. Please:</p>' +
+                    '<ul style="text-align: left; margin: 20px 0;"><li>Check your internet connection</li>' +
+                    '<li>Refresh the page</li><li>Try a different browser</li><li>Disable ad blockers temporarily</li></ul>' +
+                    '<button onclick="location.reload()" style="margin-top: 20px;">Reload Page</button></div>';
+            }
+        }, 10000);
+
+        function initApp() {
+            console.log('✓ OpenPGP.js version:', openpgp ? 'loaded' : 'not loaded');
+            
+            // Load stored keys from localStorage (persists forever)
+            try {
+                const stored = localStorage.getItem('pgpKeys');
+                keys = stored ? JSON.parse(stored) : { public: [], private: [] };
+                
+                if (keys.public.length > 0 || keys.private.length > 0) {
+                    console.log('✓ Loaded', keys.public.length, 'public keys and', keys.private.length, 'private keys from storage');
+                }
+            } catch(e) {
+                console.error('Error loading keys from storage:', e);
+                keys = { public: [], private: [] };
+            }
+
+            updateKeyList();
+            updateKeySelects();
+            
+            document.getElementById('loadingScreen').style.display = 'none';
+            document.getElementById('mainContent').style.display = 'block';
+            
+            // Show storage info
+            showStorageInfo();
+        }
+
+        // Tab switching
+        function switchTab(event, tabName) {
+            const tabs = document.querySelectorAll('.tab');
+            const contents = document.querySelectorAll('.tab-content');
+            
+            tabs.forEach(tab => tab.classList.remove('active'));
+            contents.forEach(content => content.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(tabName).classList.add('active');
+        }
+
+        // Key Generation
+        async function generateKeyPair() {
+            if (typeof openpgp === 'undefined') {
+                alert('❌ Encryption library not loaded. Please refresh the page.');
+                return;
+            }
+
+            const name = document.getElementById('genName').value.trim();
+            const email = document.getElementById('genEmail').value.trim();
+            const passphrase = document.getElementById('genPassphrase').value;
+            const keyType = document.getElementById('keyType').value;
+            const resultDiv = document.getElementById('genResult');
+            const btn = document.getElementById('generateBtn');
+
+            if (!name || !email) {
+                showMessage(resultDiv, '⚠️ Please enter name and email', 'error');
+                return;
+            }
+
+            if (!email.includes('@')) {
+                showMessage(resultDiv, '⚠️ Please enter a valid email address', 'error');
+                return;
+            }
+
+            btn.disabled = true;
+            resultDiv.innerHTML = '<div class="loader"></div><p>Generating keys... This may take 10-30 seconds.</p>';
+
+            try {
+                const options = {
+                    userIDs: [{ name: name, email: email }],
+                    passphrase: passphrase || undefined
+                };
+
+                if (keyType === 'rsa') {
+                    options.type = 'rsa';
+                    options.rsaBits = 4096;
+                } else {
+                    options.type = 'ecc';
+                    options.curve = 'curve25519';
+                }
+
+                const { privateKey, publicKey } = await openpgp.generateKey(options);
+
+                // Store keys
+                const keyId = email + '_' + Date.now();
+                keys.public.push({
+                    id: keyId,
+                    name: name,
+                    email: email,
+                    key: publicKey,
+                    created: new Date().toISOString()
+                });
+
+                keys.private.push({
+                    id: keyId,
+                    name: name,
+                    email: email,
+                    key: privateKey,
+                    hasPassphrase: !!passphrase,
+                    created: new Date().toISOString()
+                });
+
+                saveKeys();
+                updateKeyList();
+                updateKeySelects();
+
+                let html = '<div class="success">';
+                html += '<strong>✅ Key pair generated successfully!</strong><br><br>';
+                html += '<label>Public Key (share this with others):</label>';
+                html += '<textarea id="tempPublicKey" readonly style="min-height: 150px;">' + escapeHtml(publicKey) + '</textarea>';
+                html += '<button onclick="copyText(\'tempPublicKey\')">Copy Public Key</button>';
+                html += '<button onclick="downloadText(\'tempPublicKey\', \'' + email + '_public.asc\')" class="secondary">Download Public Key</button><br><br>';
+                html += '<label>Private Key (keep this SECRET!):</label>';
+                html += '<textarea id="tempPrivateKey" readonly style="min-height: 150px;">' + escapeHtml(privateKey) + '</textarea>';
+                html += '<button onclick="copyText(\'tempPrivateKey\')">Copy Private Key</button>';
+                html += '<button onclick="downloadText(\'tempPrivateKey\', \'' + email + '_private.asc\')" class="secondary">Download Private Key</button>';
+                html += '</div>';
+                
+                resultDiv.innerHTML = html;
+            } catch (error) {
+                showMessage(resultDiv, '❌ Error generating keys: ' + error.message, 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // Import Keys
+        async function importKeys() {
+            const publicKey = document.getElementById('importPublicKey').value.trim();
+            const privateKey = document.getElementById('importPrivateKey').value.trim();
+
+            if (!publicKey && !privateKey) {
+                alert('⚠️ Please paste at least one key to import');
+                return;
+            }
+
+            try {
+                if (publicKey) {
+                    const key = await openpgp.readKey({ armoredKey: publicKey });
+                    const userId = key.users[0].userID;
+                    
+                    keys.public.push({
+                        id: (userId.email || 'unknown') + '_' + Date.now(),
+                        name: userId.name || userId.email || 'Unknown',
+                        email: userId.email || 'unknown@email.com',
+                        key: publicKey,
+                        created: new Date().toISOString()
+                    });
+                }
+
+                if (privateKey) {
+                    const key = await openpgp.readPrivateKey({ armoredKey: privateKey });
+                    const userId = key.users[0].userID;
+                    
+                    keys.private.push({
+                        id: (userId.email || 'unknown') + '_' + Date.now(),
+                        name: userId.name || userId.email || 'Unknown',
+                        email: userId.email || 'unknown@email.com',
+                        key: privateKey,
+                        hasPassphrase: !key.isDecrypted(),
+                        created: new Date().toISOString()
+                    });
+                }
+
+                saveKeys();
+                updateKeyList();
+                updateKeySelects();
+
+                alert('✅ Keys imported successfully!');
+                document.getElementById('importPublicKey').value = '';
+                document.getElementById('importPrivateKey').value = '';
+            } catch (error) {
+                alert('❌ Error importing keys: ' + error.message + '\n\nMake sure you pasted a valid PGP key.');
+            }
+        }
+
+        // Update key list display
+        function updateKeyList() {
+            const listDiv = document.getElementById('keyList');
+            let html = '';
+
+            if (keys.public.length === 0 && keys.private.length === 0) {
+                html = '<p style="text-align: center; color: #999; padding: 40px 0;">No keys stored yet.<br>Generate or import keys to get started.</p>';
+            } else {
+                if (keys.public.length > 0) {
+                    html += '<h4>📗 Public Keys (' + keys.public.length + '):</h4><ul class="key-list">';
+                    keys.public.forEach((key, index) => {
+                        html += '<li class="key-item">';
+                        html += '<div class="key-info">';
+                        html += '<strong>' + escapeHtml(key.name) + '</strong>';
+                        html += '<div style="font-size: 0.9em; color: #666;">' + escapeHtml(key.email) + '</div>';
+                        html += '<div style="font-size: 0.8em; color: #999;">Added: ' + new Date(key.created).toLocaleString() + '</div>';
+                        html += '</div>';
+                        html += '<div class="key-actions">';
+                        html += '<button onclick="viewKey(\'public\', ' + index + ')" class="secondary">View</button>';
+                        html += '<button onclick="exportKey(\'public\', ' + index + ')" class="secondary">Export</button>';
+                        html += '<button onclick="deleteKey(\'public\', ' + index + ')" class="danger">Delete</button>';
+                        html += '</div>';
+                        html += '</li>';
+                    });
+                    html += '</ul>';
+                }
+
+                if (keys.private.length > 0) {
+                    html += '<h4 style="margin-top: 20px;">🔒 Private Keys (' + keys.private.length + '):</h4><ul class="key-list">';
+                    keys.private.forEach((key, index) => {
+                        html += '<li class="key-item">';
+                        html += '<div class="key-info">';
+                        html += '<strong>' + escapeHtml(key.name) + '</strong>';
+                        html += '<div style="font-size: 0.9em; color: #666;">' + escapeHtml(key.email) + '</div>';
+                        html += '<div style="font-size: 0.8em; color: #999;">';
+                        html += 'Protected: ' + (key.hasPassphrase ? '🔒 Yes' : '⚠️ No') + ' | ';
+                        html += 'Added: ' + new Date(key.created).toLocaleString();
+                        html += '</div>';
+                        html += '</div>';
+                        html += '<div class="key-actions">';
+                        html += '<button onclick="viewKey(\'private\', ' + index + ')" class="secondary">View</button>';
+                        html += '<button onclick="exportKey(\'private\', ' + index + ')" class="secondary">Export</button>';
+                        html += '<button onclick="deleteKey(\'private\', ' + index + ')" class="danger">Delete</button>';
+                        html += '</div>';
+                        html += '</li>';
+                    });
+                    html += '</ul>';
+                }
+            }
+
+            listDiv.innerHTML = html;
+            
+            // Update storage status
+            updateStorageStatus();
+        }
+        
+        function updateStorageStatus() {
+            const statusDiv = document.getElementById('storageStatus');
+            if (!statusDiv) return;
+            
+            const totalKeys = keys.public.length + keys.private.length;
+            const storageSize = new Blob([JSON.stringify(keys)]).size;
+            const storageMB = (storageSize / 1024 / 1024).toFixed(3);
+            const storageKB = (storageSize / 1024).toFixed(2);
+            
+            let status = '📊 Storage Status:\n';
+            status += '• Total Keys: ' + totalKeys + ' (' + keys.public.length + ' public, ' + keys.private.length + ' private)\n';
+            status += '• Storage Used: ' + storageKB + ' KB (' + storageMB + ' MB)\n';
+            status += '• Status: ♾️ Permanently stored in browser localStorage\n';
+            status += '• Browser: ' + navigator.userAgent.split(')')[0].split('(')[1];
+            
+            statusDiv.textContent = status;
+        }
+
+        // Update key select dropdowns
+        function updateKeySelects() {
+            const encryptSelect = document.getElementById('encryptRecipient');
+            const decryptSelect = document.getElementById('decryptPrivateKey');
+            const qrSelect = document.getElementById('qrKeySelect');
+
+            encryptSelect.innerHTML = '<option value="">Select a stored key...</option>';
+            keys.public.forEach((key, index) => {
+                encryptSelect.innerHTML += '<option value="' + index + '">' + escapeHtml(key.name) + ' (' + escapeHtml(key.email) + ')</option>';
+            });
+
+            decryptSelect.innerHTML = '<option value="">Select a stored key...</option>';
+            keys.private.forEach((key, index) => {
+                decryptSelect.innerHTML += '<option value="' + index + '">' + escapeHtml(key.name) + ' (' + escapeHtml(key.email) + ')</option>';
+            });
+
+            qrSelect.innerHTML = '<option value="">Select a key...</option>';
+            keys.public.forEach((key, index) => {
+                qrSelect.innerHTML += '<option value="public_' + index + '">' + escapeHtml(key.name) + ' - Public Key</option>';
+            });
+            keys.private.forEach((key, index) => {
+                qrSelect.innerHTML += '<option value="private_' + index + '">' + escapeHtml(key.name) + ' - Private Key</option>';
+            });
+        }
+
+        // View key
+        function viewKey(type, index) {
+            const key = keys[type][index];
+            if (confirm(type.toUpperCase() + ' KEY\n\nName: ' + key.name + '\nEmail: ' + key.email + '\n\nClick OK to copy key to clipboard')) {
+                copyToClipboard(key.key);
+            }
+        }
+
+        // Export key
+        function exportKey(type, index) {
+            const key = keys[type][index];
+            downloadContent(key.key, key.email + '_' + type + '.asc');
+        }
+
+        // Delete key
+        function deleteKey(type, index) {
+            if (confirm('⚠️ Are you sure you want to delete this key?\n\nThis cannot be undone!')) {
+                keys[type].splice(index, 1);
+                saveKeys();
+                updateKeyList();
+                updateKeySelects();
+            }
+        }
+
+        // Encrypt data
+        async function encryptData() {
+            const recipientIndex = document.getElementById('encryptRecipient').value;
+            const manualPubKey = document.getElementById('encryptPubKey').value.trim();
+            const message = document.getElementById('encryptMessage').value;
+            const resultDiv = document.getElementById('encryptResult');
+
+            let publicKeyArmored;
+            if (recipientIndex !== '') {
+                publicKeyArmored = keys.public[recipientIndex].key;
+            } else if (manualPubKey) {
+                publicKeyArmored = manualPubKey;
+            } else {
+                showMessage(resultDiv, '⚠️ Please select or paste a public key', 'error');
+                return;
+            }
+
+            if (!message) {
+                showMessage(resultDiv, '⚠️ Please enter a message to encrypt', 'error');
+                return;
+            }
+
+            try {
+                resultDiv.innerHTML = '<div class="loader"></div><p>Encrypting...</p>';
+
+                const publicKey = await openpgp.readKey({ armoredKey: publicKeyArmored });
+                
+                const encrypted = await openpgp.encrypt({
+                    message: await openpgp.createMessage({ text: message }),
+                    encryptionKeys: publicKey
+                });
+
+                let html = '<div class="success">';
+                html += '<strong>✅ Message encrypted successfully!</strong><br><br>';
+                html += '<label>Encrypted Message:</label>';
+                html += '<textarea id="encryptedOutput" readonly style="min-height: 200px;">' + escapeHtml(encrypted) + '</textarea>';
+                html += '<button onclick="copyText(\'encryptedOutput\')">Copy to Clipboard</button>';
+                html += '<button onclick="downloadText(\'encryptedOutput\', \'encrypted_message.asc\')" class="secondary">Download</button>';
+                html += '</div>';
+                
+                resultDiv.innerHTML = html;
+            } catch (error) {
+                showMessage(resultDiv, '❌ Error encrypting: ' + error.message, 'error');
+            }
+        }
+
+        // Handle file for encryption
+        function handleEncryptFile(input) {
+            const file = input.files[0];
+            if (file) {
+                if (file.size > 5000000) { // 5MB limit
+                    alert('⚠️ File is too large. Maximum size is 5MB.');
+                    input.value = '';
+                    return;
+                }
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('encryptMessage').value = e.target.result;
+                    document.getElementById('encryptFileInfo').innerHTML = 
+                        '<div class="success">✓ File loaded: ' + escapeHtml(file.name) + ' (' + (file.size/1024).toFixed(2) + ' KB)</div>';
+                };
+                reader.readAsText(file);
+            }
+        }
+
+        // Decrypt data
+        async function decryptData() {
+            const privateKeyIndex = document.getElementById('decryptPrivateKey').value;
+            const manualPrivKey = document.getElementById('decryptPrivKey').value.trim();
+            const passphrase = document.getElementById('decryptPassphrase').value;
+            const encryptedMessage = document.getElementById('decryptMessage').value.trim();
+            const resultDiv = document.getElementById('decryptResult');
+
+            let privateKeyArmored;
+            if (privateKeyIndex !== '') {
+                privateKeyArmored = keys.private[privateKeyIndex].key;
+            } else if (manualPrivKey) {
+                privateKeyArmored = manualPrivKey;
+            } else {
+                showMessage(resultDiv, '⚠️ Please select or paste a private key', 'error');
+                return;
+            }
+
+            if (!encryptedMessage) {
+                showMessage(resultDiv, '⚠️ Please enter an encrypted message', 'error');
+                return;
+            }
+
+            try {
+                resultDiv.innerHTML = '<div class="loader"></div><p>Decrypting...</p>';
+
+                let privateKey = await openpgp.readPrivateKey({ armoredKey: privateKeyArmored });
+                
+                if (!privateKey.isDecrypted() && passphrase) {
+                    privateKey = await openpgp.decryptKey({
+                        privateKey: privateKey,
+                        passphrase: passphrase
+                    });
+                }
+
+                const message = await openpgp.readMessage({
+                    armoredMessage: encryptedMessage
+                });
+
+                const { data: decrypted } = await openpgp.decrypt({
+                    message,
+                    decryptionKeys: privateKey
+                });
+
+                let html = '<div class="success">';
+                html += '<strong>✅ Message decrypted successfully!</strong><br><br>';
+                html += '<label>Decrypted Message:</label>';
+                html += '<textarea id="decryptedOutput" readonly style="min-height: 200px;">' + escapeHtml(decrypted) + '</textarea>';
+                html += '<button onclick="copyText(\'decryptedOutput\')">Copy to Clipboard</button>';
+                html += '<button onclick="downloadText(\'decryptedOutput\', \'decrypted_message.txt\')" class="secondary">Download</button>';
+                html += '</div>';
+                
+                resultDiv.innerHTML = html;
+            } catch (error) {
+                let errorMsg = error.message;
+                if (errorMsg.includes('passphrase') || errorMsg.includes('decrypt')) {
+                    errorMsg = 'Incorrect passphrase or wrong private key. Please check and try again.';
+                }
+                showMessage(resultDiv, '❌ Error decrypting: ' + errorMsg, 'error');
+            }
+        }
+
+        // Handle file for decryption
+        function handleDecryptFile(input) {
+            const file = input.files[0];
+            if (file) {
+                if (file.size > 5000000) { // 5MB limit
+                    alert('⚠️ File is too large. Maximum size is 5MB.');
+                    input.value = '';
+                    return;
+                }
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('decryptMessage').value = e.target.result;
+                    document.getElementById('decryptFileInfo').innerHTML = 
+                        '<div class="success">✓ File loaded: ' + escapeHtml(file.name) + ' (' + (file.size/1024).toFixed(2) + ' KB)</div>';
+                };
+                reader.readAsText(file);
+            }
+        }
+
+        // QR Code Scanner
+        function startQRScanner() {
+            if (typeof jsQR === 'undefined') {
+                alert('⚠️ QR Scanner library not loaded yet. Please refresh the page.');
+                return;
+            }
+
+            const video = document.getElementById('qrVideo');
+            const canvas = document.getElementById('qrCanvas');
+            const container = document.getElementById('videoContainer');
+
+            container.style.display = 'block';
+            qrScanning = true;
+
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+                .then(function(stream) {
+                    videoStream = stream;
+                    video.srcObject = stream;
+                    video.setAttribute('playsinline', true);
+                    video.play();
+                    requestAnimationFrame(tick);
+                })
+                .catch(function(err) {
+                    alert('❌ Error accessing camera: ' + err.message + '\n\nMake sure you granted camera permissions.');
+                    container.style.display = 'none';
+                });
+        }
+
+        function tick() {
+            const video = document.getElementById('qrVideo');
+            const canvas = document.getElementById('qrCanvas');
+            const canvasContext = canvas.getContext('2d');
+
+            if (video.readyState === video.HAVE_ENOUGH_DATA && qrScanning) {
+                canvas.height = video.videoHeight;
+                canvas.width = video.videoWidth;
+                canvasContext.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                const imageData = canvasContext.getImageData(0, 0, canvas.width, canvas.height);
+                const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                    inversionAttempts: 'dontInvert',
+                });
+
+                if (code) {
+                    handleQRData(code.data);
+                    stopQRScanner();
+                }
+            }
+
+            if (qrScanning) {
+                requestAnimationFrame(tick);
+            }
+        }
+
+        function stopQRScanner() {
+            qrScanning = false;
+            const video = document.getElementById('qrVideo');
+            const container = document.getElementById('videoContainer');
+            
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+            }
+            
+            container.style.display = 'none';
+        }
+
+        function scanQRFromImage(input) {
+            if (typeof jsQR === 'undefined') {
+                alert('⚠️ QR Scanner library not loaded yet. Please refresh the page.');
+                return;
+            }
+
+            const file = input.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.getElementById('qrCanvas');
+                    const context = canvas.getContext('2d');
+                    
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    context.drawImage(img, 0, 0);
+                    
+                    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                    const code = jsQR(imageData.data, imageData.width, imageData.height);
+                    
+                    if (code) {
+                        handleQRData(code.data);
+                    } else {
+                        alert('❌ No QR code found in image. Please try another image.');
+                    }
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function handleQRData(data) {
+            lastQRData = data;
+            const resultDiv = document.getElementById('qrResult');
+            
+            let html = '<div class="success">';
+            html += '<strong>✅ QR Code Scanned Successfully!</strong><br><br>';
+            html += '<label>Scanned Data (' + data.length + ' characters):</label>';
+            html += '<textarea readonly style="min-height: 150px;">' + escapeHtml(data) + '</textarea>';
+            html += '</div>';
+            
+            resultDiv.innerHTML = html;
+            document.getElementById('qrActions').style.display = 'block';
+        }
+
+        function useQRAsPublicKey() {
+            document.getElementById('importPublicKey').value = lastQRData;
+            const keyTab = document.querySelector('.tab:nth-child(1)');
+            keyTab.click();
+            alert('✓ QR data loaded as public key. Scroll down and click "Import Keys" to save it.');
+        }
+
+        function useQRAsPrivateKey() {
+            document.getElementById('importPrivateKey').value = lastQRData;
+            const keyTab = document.querySelector('.tab:nth-child(1)');
+            keyTab.click();
+            alert('✓ QR data loaded as private key. Scroll down and click "Import Keys" to save it.');
+        }
+
+        function useQRAsEncrypted() {
+            document.getElementById('decryptMessage').value = lastQRData;
+            const decryptTab = document.querySelector('.tab:nth-child(3)');
+            decryptTab.click();
+            alert('✓ QR data loaded as encrypted message. Select your private key to decrypt.');
+        }
+
+        // Generate QR Code
+        function loadKeyForQR() {
+            const select = document.getElementById('qrKeySelect').value;
+            if (!select) return;
+
+            const [type, index] = select.split('_');
+            const key = keys[type][index];
+            document.getElementById('qrTextInput').value = key.key;
+        }
+
+        function generateQRCode() {
+            if (typeof QRCode === 'undefined') {
+                alert('⚠️ QR Code library not loaded yet. Please refresh the page.');
+                return;
+            }
+
+            const text = document.getElementById('qrTextInput').value;
+            const size = parseInt(document.getElementById('qrSize').value);
+            const container = document.getElementById('generatedQR');
+
+            if (!text) {
+                alert('⚠️ Please enter text or select a key');
+                return;
+            }
+
+            if (text.length > 2950) {
+                alert('⚠️ Text is too long for QR code. Maximum is ~2950 characters.\n\nCurrent length: ' + text.length + ' characters\n\nTry using a smaller key or split into multiple QR codes.');
+                return;
+            }
+
+            container.innerHTML = '';
+            
+            try {
+                currentQRCode = new QRCode(container, {
+                    text: text,
+                    width: size,
+                    height: size,
+                    colorDark: '#000000',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.M
+                });
+            } catch (error) {
+                alert('❌ Error generating QR code: ' + error.message);
+            }
+        }
+
+        function downloadQR() {
+            const canvas = document.querySelector('#generatedQR canvas');
+            if (!canvas) {
+                alert('⚠️ Please generate a QR code first');
+                return;
+            }
+
+            canvas.toBlob(function(blob) {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'pgp_qr_code_' + Date.now() + '.png';
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+        }
+
+        function clearQRGen() {
+            document.getElementById('qrTextInput').value = '';
+            document.getElementById('qrKeySelect').value = '';
+            document.getElementById('generatedQR').innerHTML = '';
+            currentQRCode = null;
+        }
+
+        // Utility functions
+        function saveKeys() {
+            try {
+                localStorage.setItem('pgpKeys', JSON.stringify(keys));
+                console.log('✓ Keys saved to browser storage (permanent)');
+                
+                // Calculate storage size
+                const storageSize = new Blob([JSON.stringify(keys)]).size;
+                console.log('Storage size:', (storageSize / 1024).toFixed(2), 'KB');
+                
+                return true;
+            } catch(e) {
+                console.error('❌ Error saving keys:', e);
+                alert('❌ Error saving keys: ' + e.message);
+                return false;
+            }
+        }
+        
+        function showStorageInfo() {
+            if (keys.public.length > 0 || keys.private.length > 0) {
+                const totalKeys = keys.public.length + keys.private.length;
+                const storageSize = new Blob([JSON.stringify(keys)]).size;
+                console.log('📦 Storage Info: ' + totalKeys + ' keys, ' + (storageSize / 1024).toFixed(2) + ' KB');
+            }
+        }
+        
+        function exportAllKeys() {
+            if (keys.public.length === 0 && keys.private.length === 0) {
+                alert('⚠️ No keys to export');
+                return;
+            }
+            
+            const exportData = {
+                exported: new Date().toISOString(),
+                version: '1.0',
+                keys: keys
+            };
+            
+            const json = JSON.stringify(exportData, null, 2);
+            downloadContent(json, 'pgp_keyring_backup_' + Date.now() + '.json');
+            alert('✅ All keys exported to JSON file!\n\nKeep this file safe as a backup.');
+        }
+        
+        function importAllKeys() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            
+            input.onchange = function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    try {
+                        const data = JSON.parse(event.target.result);
+                        
+                        if (data.keys && data.keys.public && data.keys.private) {
+                            if (confirm('⚠️ Import ' + (data.keys.public.length + data.keys.private.length) + ' keys?\n\nThis will merge with your existing keys.')) {
+                                // Merge keys
+                                keys.public = keys.public.concat(data.keys.public);
+                                keys.private = keys.private.concat(data.keys.private);
+                                
+                                saveKeys();
+                                updateKeyList();
+                                updateKeySelects();
+                                
+                                alert('✅ Successfully imported ' + (data.keys.public.length + data.keys.private.length) + ' keys!');
+                            }
+                        } else {
+                            alert('❌ Invalid backup file format');
+                        }
+                    } catch (err) {
+                        alert('❌ Error reading backup file: ' + err.message);
+                    }
+                };
+                reader.readAsText(file);
+            };
+            
+            input.click();
+        }
+        
+        function clearAllData() {
+            if (confirm('⚠️ DELETE ALL KEYS?\n\nThis will permanently delete all stored keys.\nThis action CANNOT be undone!\n\nMake sure you have backups!')) {
+                if (confirm('Are you ABSOLUTELY SURE?\n\nAll ' + (keys.public.length + keys.private.length) + ' keys will be deleted permanently!')) {
+                    localStorage.removeItem('pgpKeys');
+                    keys = { public: [], private: [] };
+                    updateKeyList();
+                    updateKeySelects();
+                    alert('✅ All keys deleted');
+                }
+            }
+        }
+
+        function copyToClipboard(text) {
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(() => {
+                    alert('✓ Copied to clipboard!');
+                }).catch(err => {
+                    fallbackCopy(text);
+                });
+            } else {
+                fallbackCopy(text);
+            }
+        }
+
+        function fallbackCopy(text) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+                alert('✓ Copied to clipboard!');
+            } catch(err) {
+                alert('❌ Could not copy to clipboard. Please copy manually.');
+            }
+            document.body.removeChild(textarea);
+        }
+
+        function copyText(elementId) {
+            const element = document.getElementById(elementId);
+            if (element) {
+                copyToClipboard(element.value);
+            }
+        }
+
+        function downloadText(elementId, filename) {
+            const element = document.getElementById(elementId);
+            if (element) {
+                downloadContent(element.value, filename);
+            }
+        }
+
+        function downloadContent(content, filename) {
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function showMessage(element, message, type) {
+            element.innerHTML = '<div class="' + type + '">' + message + '</div>';
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function clearEncrypt() {
+            document.getElementById('encryptMessage').value = '';
+            document.getElementById('encryptPubKey').value = '';
+            document.getElementById('encryptRecipient').value = '';
+            document.getElementById('encryptResult').innerHTML = '';
+            document.getElementById('encryptFileInfo').innerHTML = '';
+            document.getElementById('encryptFile').value = '';
+        }
+
+        function clearDecrypt() {
+            document.getElementById('decryptMessage').value = '';
+            document.getElementById('decryptPrivKey').value = '';
+            document.getElementById('decryptPrivateKey').value = '';
+            document.getElementById('decryptPassphrase').value = '';
+            document.getElementById('decryptResult').innerHTML = '';
+            document.getElementById('decryptFileInfo').innerHTML = '';
+            document.getElementById('decryptFile').value = '';
+        }
+    </script>
+</body>
+</html>
