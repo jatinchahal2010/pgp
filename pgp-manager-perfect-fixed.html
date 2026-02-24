@@ -1,0 +1,1881 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#2196F3">
+    <title>PGP Manager Pro</title>
+    
+    <script src="https://unpkg.com/openpgp@5.10.2/dist/openpgp.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    
+    <style>
+        :root {
+            --primary: #2196F3;
+            --primary-dark: #1976D2;
+            --secondary: #4CAF50;
+            --secondary-dark: #388E3C;
+            --accent: #FF9800;
+            --danger: #f44336;
+            --bg: #f5f5f5;
+            --card-bg: #ffffff;
+            --text: #212121;
+            --text-secondary: #757575;
+            --border: #e0e0e0;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        .app-bar {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            padding: 12px 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .app-bar h1 { font-size: 20px; font-weight: 600; }
+
+        .icon-btn {
+            background: rgba(255,255,255,0.15);
+            border: none;
+            color: white;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            transition: all 0.3s;
+        }
+
+        .icon-btn:hover { background: rgba(255,255,255,0.25); transform: scale(1.05); }
+
+        .drawer-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 2000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s;
+        }
+
+        .drawer-overlay.active { opacity: 1; visibility: visible; }
+
+        .drawer {
+            position: fixed;
+            top: 0;
+            left: -320px;
+            width: 300px;
+            height: 100%;
+            background: var(--card-bg);
+            z-index: 2001;
+            transition: left 0.3s;
+            box-shadow: 4px 0 12px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .drawer.active { left: 0; }
+
+        .drawer-header {
+            background: linear-gradient(135deg, var(--secondary), var(--secondary-dark));
+            padding: 60px 20px 20px;
+            color: white;
+        }
+
+        .drawer-header h2 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+        .drawer-header p { font-size: 13px; opacity: 0.95; }
+
+        .drawer-menu { list-style: none; flex: 1; overflow-y: auto; }
+        .drawer-menu li { border-bottom: 1px solid var(--border); }
+
+        .drawer-menu a {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px 20px;
+            color: var(--text);
+            text-decoration: none;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        .drawer-menu a:hover { background: var(--bg); padding-left: 24px; }
+        .menu-icon { font-size: 24px; width: 24px; text-align: center; }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: var(--card-bg);
+            min-height: calc(100vh - 64px);
+        }
+
+        .view-content { animation: fadeIn 0.3s; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .section-header {
+            background: var(--bg);
+            padding: 12px 16px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .key-card {
+            background: var(--card-bg);
+            padding: 16px;
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .key-card:hover { background: #fafafa; }
+
+        .key-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: var(--secondary);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            flex-shrink: 0;
+        }
+
+        .key-info { flex: 1; min-width: 0; }
+
+        .key-name {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .key-email {
+            font-size: 14px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 4px;
+        }
+
+        .key-meta {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+            font-size: 12px;
+        }
+
+        .key-badge { font-weight: 500; color: var(--text-secondary); }
+
+        .key-status {
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+
+        .status-protected { background: #E8F5E9; color: #2E7D32; }
+        .status-unprotected { background: #FFF3E0; color: #F57C00; }
+
+        .key-date {
+            font-size: 12px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+
+        .card {
+            background: var(--card-bg);
+            padding: 20px;
+            margin: 16px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .card h3 { font-size: 18px; font-weight: 600; margin-bottom: 16px; }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            box-shadow: 0 4px 12px rgba(33, 150, 243, 0.4);
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: var(--card-bg);
+            color: var(--primary);
+            border: 2px solid var(--primary);
+        }
+
+        .btn-secondary:hover:not(:disabled) { background: rgba(33, 150, 243, 0.05); }
+
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-danger:hover:not(:disabled) { background: #d32f2f; }
+
+        .btn-full { width: 100%; margin-bottom: 12px; }
+
+        input, textarea, select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 15px;
+            font-family: inherit;
+            transition: all 0.3s;
+            background: var(--card-bg);
+            color: var(--text);
+        }
+
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.1);
+        }
+
+        textarea {
+            min-height: 120px;
+            font-family: 'Courier New', monospace;
+            resize: vertical;
+        }
+
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; font-size: 14px; font-weight: 600; }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.6);
+            z-index: 3500;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            backdrop-filter: blur(4px);
+        }
+
+        .modal-overlay.active { display: flex; animation: fadeIn 0.3s; }
+
+        .modal {
+            background: var(--card-bg);
+            border-radius: 16px;
+            max-width: 500px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            animation: slideUp 0.3s;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(40px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .modal-header {
+            padding: 24px 24px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .modal-title { font-size: 20px; font-weight: 700; }
+        .modal-subtitle { font-size: 14px; color: var(--text-secondary); margin-top: 4px; }
+        .modal-content { padding: 24px; }
+
+        .modal-actions {
+            padding: 16px 24px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            border-top: 1px solid var(--border);
+        }
+
+        .action-list { list-style: none; margin: 0; padding: 0; }
+
+        .action-item {
+            padding: 16px 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            transition: all 0.2s;
+        }
+
+        .action-item:hover { background: var(--bg); }
+        .action-icon { font-size: 24px; width: 32px; text-align: center; }
+        .action-label { font-size: 15px; font-weight: 500; flex: 1; }
+
+        .action-item.danger { background: #FFEBEE; }
+        .action-item.danger:hover { background: #FFCDD2; }
+        .action-item.danger .action-label { color: var(--danger); font-weight: 600; }
+
+        .info-card {
+            padding: 14px 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            border-left: 4px solid var(--primary);
+            background: #E3F2FD;
+            font-size: 14px;
+        }
+
+        .info-card.warning { background: #FFF3E0; border-left-color: var(--accent); }
+        .info-card.success { background: #E8F5E9; border-left-color: var(--secondary); }
+        .info-card.error { background: #FFEBEE; border-left-color: var(--danger); }
+
+        .fab-container { position: fixed; bottom: 20px; right: 20px; z-index: 100; }
+
+        .fab {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 6px 16px rgba(33, 150, 243, 0.4);
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .fab:hover { transform: scale(1.1); }
+        .fab.active { transform: rotate(45deg); }
+
+        .fab-menu {
+            position: absolute;
+            bottom: 70px;
+            right: 0;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            min-width: 220px;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(10px);
+            transition: all 0.3s;
+        }
+
+        .fab-menu.active {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .fab-menu-item {
+            padding: 16px 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: all 0.2s;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .fab-menu-item:last-child { border-bottom: none; }
+        .fab-menu-item:hover { background: var(--bg); }
+        .fab-menu-icon { font-size: 24px; width: 32px; }
+        .fab-menu-label { font-size: 15px; font-weight: 500; }
+
+        .toast {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #323232;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 24px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 9998;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s;
+        }
+
+        .toast.show { opacity: 1; visibility: visible; bottom: 100px; }
+
+        .empty-state { text-align: center; padding: 80px 40px; }
+        .empty-icon { font-size: 72px; opacity: 0.15; margin-bottom: 16px; }
+        .empty-text { font-size: 15px; color: var(--text-secondary); }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            color: white;
+        }
+
+        .spinner {
+            border: 4px solid rgba(255,255,255,0.2);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        /* PASSWORD MANAGER */
+        .password-item {
+            background: white;
+            padding: 16px;
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .password-item:hover { background: #fafafa; }
+
+        .password-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .password-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #FF9800, #F57C00);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            flex-shrink: 0;
+        }
+
+        .password-details { flex: 1; min-width: 0; }
+        .password-name { font-size: 16px; font-weight: 600; margin-bottom: 2px; }
+        .password-username { font-size: 14px; color: var(--text-secondary); margin-bottom: 4px; }
+
+        .totp-wrapper { text-align: right; }
+        .totp-code {
+            font-family: 'Courier New', monospace;
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--primary);
+            letter-spacing: 3px;
+        }
+
+        .totp-timer {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        .hidden { display: none !important; }
+
+        body.dark-mode {
+            background: #121212;
+            color: #e0e0e0;
+            --bg: #121212;
+            --card-bg: #1e1e1e;
+            --text: #e0e0e0;
+            --text-secondary: #999;
+            --border: #333;
+        }
+
+        body.dark-mode .key-card:hover { background: #2c2c2c; }
+        body.dark-mode .action-item:hover { background: #2c2c2c; }
+        body.dark-mode .fab-menu { background: #2c2c2c; }
+        body.dark-mode .password-item:hover { background: #2c2c2c; }
+    </style>
+</head>
+<body>
+    <div id="loadingScreen" class="loading-overlay">
+        <div class="spinner"></div>
+        <h2 style="font-size: 24px; margin-bottom: 8px;">PGP Manager Pro</h2>
+        <p style="opacity: 0.9;">Initializing...</p>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+    <div class="drawer" id="drawer">
+        <div class="drawer-header">
+            <h2>🔐 PGP Manager</h2>
+            <p>Complete Security Suite</p>
+        </div>
+        <ul class="drawer-menu">
+            <li><a href="#" onclick="showView('keys'); closeDrawer();"><span class="menu-icon">🔑</span> My Keys</a></li>
+            <li><a href="#" onclick="showView('passwords'); closeDrawer();"><span class="menu-icon">🔐</span> Password Manager</a></li>
+            <li><a href="#" onclick="showView('encrypt'); closeDrawer();"><span class="menu-icon">🔒</span> Encrypt/Decrypt</a></li>
+            <li><a href="#" onclick="showView('files'); closeDrawer();"><span class="menu-icon">📁</span> File Encryption</a></li>
+            <li><a href="#" onclick="showView('sign'); closeDrawer();"><span class="menu-icon">✍️</span> Sign/Verify</a></li>
+            <li><a href="#" onclick="showView('aes'); closeDrawer();"><span class="menu-icon">🔐</span> AES-256</a></li>
+            <li><a href="#" onclick="showView('tools'); closeDrawer();"><span class="menu-icon">🛠️</span> Tools</a></li>
+            <li><a href="#" onclick="showView('qr'); closeDrawer();"><span class="menu-icon">📱</span> QR Tools</a></li>
+            <li><a href="#" onclick="showView('backup'); closeDrawer();"><span class="menu-icon">💾</span> Backup</a></li>
+            <li><a href="#" onclick="showView('settings'); closeDrawer();"><span class="menu-icon">⚙️</span> Settings</a></li>
+        </ul>
+    </div>
+
+    <div class="app-bar">
+        <button class="icon-btn" onclick="toggleDrawer()">☰</button>
+        <h1 id="appTitle">My Keys</h1>
+        <button class="icon-btn" onclick="panicDestroy()">⚠️</button>
+    </div>
+
+    <div class="container" id="mainContent">
+        <!-- Keys View -->
+        <div id="keysView" class="view-content">
+            <div class="section-header">MY KEYS</div>
+            <div id="keysList"></div>
+        </div>
+
+        <!-- Password Manager View -->
+        <div id="passwordsView" class="view-content hidden">
+            <div class="section-header">PASSWORDS</div>
+            <div id="passwordsList"></div>
+        </div>
+
+        <!-- Encrypt View -->
+        <div id="encryptView" class="view-content hidden">
+            <div class="card">
+                <h3>Encrypt/Decrypt Messages</h3>
+                <div class="info-card">🔒 Secure end-to-end encrypted messaging</div>
+                <button class="btn btn-primary btn-full" onclick="showModal('encrypt')">🔒 Encrypt Message</button>
+                <button class="btn btn-secondary btn-full" onclick="showModal('decrypt')">🔓 Decrypt Message</button>
+            </div>
+        </div>
+
+        <!-- Files View -->
+        <div id="filesView" class="view-content hidden">
+            <div class="card">
+                <h3>File Encryption</h3>
+                <div class="info-card">📁 Encrypt files securely</div>
+                <input type="file" id="encFileInput" class="hidden" onchange="encryptFile(this)">
+                <button class="btn btn-primary btn-full" onclick="document.getElementById('encFileInput').click()">🔒 Encrypt File</button>
+                <input type="file" id="decFileInput" class="hidden" accept=".pgp" onchange="decryptFile(this)">
+                <button class="btn btn-secondary btn-full" onclick="document.getElementById('decFileInput').click()">🔓 Decrypt File</button>
+            </div>
+        </div>
+
+        <!-- Sign View -->
+        <div id="signView" class="view-content hidden">
+            <div class="card">
+                <h3>Digital Signatures</h3>
+                <div class="info-card">✍️ Sign and verify messages</div>
+                <button class="btn btn-primary btn-full" onclick="showModal('sign')">✍️ Sign Message</button>
+                <button class="btn btn-secondary btn-full" onclick="showModal('verify')">✓ Verify Signature</button>
+            </div>
+        </div>
+
+        <!-- AES View -->
+        <div id="aesView" class="view-content hidden">
+            <div class="card">
+                <h3>AES-256 Encryption</h3>
+                <div class="info-card">🔐 Password-based encryption</div>
+                <button class="btn btn-primary btn-full" onclick="showModal('aesEnc')">🔒 Encrypt</button>
+                <button class="btn btn-secondary btn-full" onclick="showModal('aesDec')">🔓 Decrypt</button>
+            </div>
+        </div>
+
+        <!-- Tools View -->
+        <div id="toolsView" class="view-content hidden">
+            <div class="section-header">HASH GENERATOR</div>
+            <div class="card">
+                <textarea id="hashInput" placeholder="Text to hash..."></textarea>
+                <select id="hashType" style="margin: 12px 0;">
+                    <option value="SHA-256">SHA-256</option>
+                    <option value="SHA-512">SHA-512</option>
+                    <option value="SHA-1">SHA-1</option>
+                </select>
+                <button class="btn btn-primary btn-full" onclick="generateHash()">GENERATE</button>
+                <div id="hashOutput"></div>
+            </div>
+
+            <div class="section-header">STEGANOGRAPHY - HIDE TEXT IN EMOJI</div>
+            <div class="card">
+                <div class="info-card warning">🤫 Hide secret text INSIDE emoji using invisible characters</div>
+                <textarea id="stegoInput" placeholder="Enter secret message or emoji with hidden message..."></textarea>
+                <button class="btn btn-primary btn-full" onclick="stegoHide()">🕵️ HIDE TEXT IN EMOJI</button>
+                <button class="btn btn-secondary btn-full" onclick="stegoReveal()">🔍 REVEAL HIDDEN TEXT</button>
+                <div id="stegoOutput"></div>
+            </div>
+
+            <div class="section-header">PASSWORD GENERATOR</div>
+            <div class="card">
+                <label>Length: <span id="pwdLen">16</span></label>
+                <input type="range" id="pwdLength" min="8" max="64" value="16" oninput="document.getElementById('pwdLen').textContent=this.value">
+                <div style="margin-top:16px;">
+                    <label><input type="checkbox" id="pwdUpper" checked style="width:auto;margin-right:8px;"> Uppercase</label>
+                    <label><input type="checkbox" id="pwdLower" checked style="width:auto;margin-right:8px;"> Lowercase</label>
+                    <label><input type="checkbox" id="pwdNumbers" checked style="width:auto;margin-right:8px;"> Numbers</label>
+                    <label><input type="checkbox" id="pwdSymbols" checked style="width:auto;margin-right:8px;"> Symbols</label>
+                </div>
+                <button class="btn btn-primary btn-full" style="margin-top:12px;" onclick="generatePassword()">GENERATE</button>
+                <div id="pwdOutput"></div>
+            </div>
+        </div>
+
+        <!-- QR View -->
+        <div id="qrView" class="view-content hidden">
+            <div class="card">
+                <h3>QR Code Generator</h3>
+                <textarea id="qrInput" placeholder="Enter text..."></textarea>
+                <button class="btn btn-primary btn-full" onclick="generateQR()">Generate QR</button>
+                <div id="qrOutput" style="text-align:center;margin-top:16px;"></div>
+            </div>
+        </div>
+
+        <!-- Backup View -->
+        <div id="backupView" class="view-content hidden">
+            <div class="section-header">BACKUP KEYS</div>
+            <div class="card">
+                <div class="info-card warning">⚠️ Choose backup format</div>
+                <button class="btn btn-primary btn-full" onclick="exportASC()">📄 .ASC (Keys Only)</button>
+                <button class="btn btn-primary btn-full" onclick="exportZIP()">🗜️ Password-Protected ZIP</button>
+                <button class="btn btn-primary btn-full" onclick="exportGPG()">🔐 GPG Backup (OpenKeychain)</button>
+            </div>
+
+            <div class="section-header">RESTORE KEYS</div>
+            <div class="card">
+                <input type="file" id="restoreFile" class="hidden" accept=".pgp,.gpg,.asc,.zip" onchange="restoreFile(this)">
+                <button class="btn btn-secondary btn-full" onclick="document.getElementById('restoreFile').click()">📥 Import Backup</button>
+            </div>
+
+            <div class="section-header">IMPORT KEYS</div>
+            <div class="card">
+                <button class="btn btn-secondary btn-full" onclick="showModal('importPub')">📗 Import Public Key</button>
+                <button class="btn btn-secondary btn-full" onclick="showModal('importPriv')">🔒 Import Private Key</button>
+            </div>
+
+            <div class="section-header">BACKUP PASSWORDS</div>
+            <div class="card">
+                <button class="btn btn-primary btn-full" onclick="exportPasswords()">💾 Export Passwords</button>
+                <input type="file" id="importPasswordsFile" class="hidden" accept=".json" onchange="importPasswords(this)">
+                <button class="btn btn-secondary btn-full" onclick="document.getElementById('importPasswordsFile').click()">📥 Import Passwords</button>
+            </div>
+        </div>
+
+        <!-- Settings View -->
+        <div id="settingsView" class="view-content hidden">
+            <div class="section-header">APPEARANCE</div>
+            <div class="card">
+                <button class="btn btn-primary btn-full" onclick="toggleTheme()">🌓 Toggle Dark/Light Mode</button>
+            </div>
+            
+            <div class="section-header">SECURITY</div>
+            <div class="card">
+                <button class="btn btn-secondary btn-full" onclick="clearClipboard()">📋 Clear Clipboard</button>
+            </div>
+
+            <div class="section-header">STORAGE</div>
+            <div class="card">
+                <div class="info-card success">
+                    <strong>Storage Status</strong><br>
+                    <div id="storageInfo" style="font-family:monospace;font-size:13px;margin-top:8px;"></div>
+                </div>
+            </div>
+
+            <div class="section-header">DANGER ZONE</div>
+            <div class="card">
+                <button class="btn btn-danger btn-full" onclick="clearAll()">🗑️ Delete All Keys</button>
+                <button class="btn btn-danger btn-full" onclick="clearAllPasswords()">🗑️ Delete All Passwords</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- FAB with Menu -->
+    <div class="fab-container">
+        <div class="fab-menu" id="fabMenu">
+            <div class="fab-menu-item" onclick="showModal('generate'); toggleFabMenu();">
+                <span class="fab-menu-icon">🔑</span>
+                <span class="fab-menu-label">Generate Key</span>
+            </div>
+            <div class="fab-menu-item" onclick="showModal('importPub'); toggleFabMenu();">
+                <span class="fab-menu-icon">📗</span>
+                <span class="fab-menu-label">Import Public</span>
+            </div>
+            <div class="fab-menu-item" onclick="showModal('importPriv'); toggleFabMenu();">
+                <span class="fab-menu-icon">🔒</span>
+                <span class="fab-menu-label">Import Private</span>
+            </div>
+        </div>
+        <button class="fab" id="fabBtn" onclick="toggleFabMenu()">+</button>
+    </div>
+
+    <!-- MODALS -->
+    <!-- Key Actions Modal -->
+    <div class="modal-overlay" id="keyActionsModal">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title" id="keyActionTitle">Key Actions</div>
+                <div class="modal-subtitle" id="keyActionEmail"></div>
+            </div>
+            <div class="modal-content" style="padding:0;">
+                <ul class="action-list">
+                    <li class="action-item" onclick="copyPublicKey()">
+                        <span class="action-icon">📋</span>
+                        <span class="action-label">COPY PUBLIC KEY</span>
+                    </li>
+                    <li class="action-item" onclick="showFingerprint()">
+                        <span class="action-icon">🔍</span>
+                        <span class="action-label">SHOW FINGERPRINT</span>
+                    </li>
+                    <li class="action-item" onclick="changePassphrase()" id="changePassItem">
+                        <span class="action-icon">🔑</span>
+                        <span class="action-label">CHANGE PASSPHRASE</span>
+                    </li>
+                    <li class="action-item" onclick="editKeyMeta()">
+                        <span class="action-icon">✏️</span>
+                        <span class="action-label">EDIT NAME/EMAIL</span>
+                    </li>
+                    <li class="action-item" onclick="exportKey()">
+                        <span class="action-icon">💾</span>
+                        <span class="action-label">EXPORT KEY</span>
+                    </li>
+                    <li class="action-item danger" onclick="deleteKey()">
+                        <span class="action-icon">🗑️</span>
+                        <span class="action-label">DELETE KEY</span>
+                    </li>
+                </ul>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal('keyActions')">CANCEL</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Generate Key Modal -->
+    <div class="modal-overlay" id="generateModal">
+        <div class="modal">
+            <div class="modal-header"><div class="modal-title">Generate New Key Pair</div></div>
+            <div class="modal-content">
+                <div class="info-card">ℹ️ Keys are generated locally</div>
+                <div class="form-group"><label>Name *</label><input type="text" id="genName" placeholder="John Doe"></div>
+                <div class="form-group"><label>Email *</label><input type="email" id="genEmail" placeholder="john@example.com"></div>
+                <div class="form-group"><label>Passphrase</label><input type="password" id="genPass" placeholder="Strong passphrase"></div>
+                <div class="form-group">
+                    <label>Key Type</label>
+                    <select id="genType">
+                        <option value="rsa-4096">RSA 4096-bit (Most compatible)</option>
+                        <option value="rsa-2048">RSA 2048-bit</option>
+                        <option value="ecc">ECC Curve25519</option>
+                    </select>
+                </div>
+                <div id="genResult"></div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal('generate')">CANCEL</button>
+                <button class="btn btn-primary" onclick="generateKey()">GENERATE</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Public Key Modal -->
+    <div class="modal-overlay" id="importPubModal">
+        <div class="modal">
+            <div class="modal-header"><div class="modal-title">Import Public Key</div></div>
+            <div class="modal-content">
+                <div class="info-card">ℹ️ Paste friend's public key</div>
+                <div class="form-group">
+                    <label>Public Key *</label>
+                    <textarea id="importPubData" placeholder="-----BEGIN PGP PUBLIC KEY BLOCK-----"></textarea>
+                </div>
+                <div id="importPubResult"></div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal('importPub')">CANCEL</button>
+                <button class="btn btn-primary" onclick="importPublicKey()">IMPORT</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Private Key Modal -->
+    <div class="modal-overlay" id="importPrivModal">
+        <div class="modal">
+            <div class="modal-header"><div class="modal-title">Import Private Key</div></div>
+            <div class="modal-content">
+                <div class="info-card warning">⚠️ Only import your own keys!</div>
+                <div class="form-group">
+                    <label>Private Key *</label>
+                    <textarea id="importPrivData" placeholder="-----BEGIN PGP PRIVATE KEY BLOCK-----"></textarea>
+                </div>
+                <div id="importPrivResult"></div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal('importPriv')">CANCEL</button>
+                <button class="btn btn-primary" onclick="importPrivateKey()">IMPORT</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Encrypt Modal -->
+    <div class="modal-overlay" id="encryptModal">
+        <div class="modal">
+            <div class="modal-header"><div class="modal-title">Encrypt Message</div></div>
+            <div class="modal-content">
+                <div class="form-group">
+                    <label>Recipient *</label>
+                    <select id="encryptRecipient"></select>
+                </div>
+                <div class="form-group">
+                    <label>Message *</label>
+                    <textarea id="encryptMessage" placeholder="Secret message..."></textarea>
+                </div>
+                <div id="encryptResult"></div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal('encrypt')">CANCEL</button>
+                <button class="btn btn-primary" onclick="encryptMessage()">ENCRYPT</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Decrypt Modal -->
+    <div class="modal-overlay" id="decryptModal">
+        <div class="modal">
+            <div class="modal-header"><div class="modal-title">Decrypt Message</div></div>
+            <div class="modal-content">
+                <div class="form-group">
+                    <label>Your Key *</label>
+                    <select id="decryptKey"></select>
+                </div>
+                <div class="form-group">
+                    <label>Passphrase</label>
+                    <input type="password" id="decryptPass" placeholder="If protected">
+                </div>
+                <div class="form-group">
+                    <label>Encrypted Message *</label>
+                    <textarea id="decryptMessage" placeholder="Paste encrypted message..."></textarea>
+                </div>
+                <div id="decryptResult"></div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal('decrypt')">CANCEL</button>
+                <button class="btn btn-primary" onclick="decryptMessage()">DECRYPT</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sign Modal -->
+    <div class="modal-overlay" id="signModal">
+        <div class="modal">
+            <div class="modal-header"><div class="modal-title">Sign Message</div></div>
+            <div class="modal-content">
+                <div class="form-group">
+                    <label>Your Key *</label>
+                    <select id="signKey"></select>
+                </div>
+                <div class="form-group">
+                    <label>Passphrase</label>
+                    <input type="password" id="signPass" placeholder="If protected">
+                </div>
+                <div class="form-group">
+                    <label>Message *</label>
+                    <textarea id="signMessage" placeholder="Message to sign..."></textarea>
+                </div>
+                <div id="signResult"></div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal('sign')">CANCEL</button>
+                <button class="btn btn-primary" onclick="signMessage()">SIGN</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Verify Modal -->
+    <div class="modal-overlay" id="verifyModal">
+        <div class="modal">
+            <div class="modal-header"><div class="modal-title">Verify Signature</div></div>
+            <div class="modal-content">
+                <div class="form-group">
+                    <label>Signed Message *</label>
+                    <textarea id="verifyMessage" placeholder="Paste signed message..."></textarea>
+                </div>
+                <div id="verifyResult"></div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal('verify')">CANCEL</button>
+                <button class="btn btn-primary" onclick="verifySignature()">VERIFY</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AES Encrypt Modal -->
+    <div class="modal-overlay" id="aesEncModal">
+        <div class="modal">
+            <div class="modal-header"><div class="modal-title">AES-256 Encrypt</div></div>
+            <div class="modal-content">
+                <div class="form-group">
+                    <label>Password *</label>
+                    <input type="password" id="aesEncPass" placeholder="Strong password">
+                </div>
+                <div class="form-group">
+                    <label>Message *</label>
+                    <textarea id="aesEncMsg" placeholder="Message to encrypt..."></textarea>
+                </div>
+                <div id="aesEncResult"></div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal('aesEnc')">CANCEL</button>
+                <button class="btn btn-primary" onclick="aesEncrypt()">ENCRYPT</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AES Decrypt Modal -->
+    <div class="modal-overlay" id="aesDecModal">
+        <div class="modal">
+            <div class="modal-header"><div class="modal-title">AES-256 Decrypt</div></div>
+            <div class="modal-content">
+                <div class="form-group">
+                    <label>Password *</label>
+                    <input type="password" id="aesDecPass" placeholder="Password">
+                </div>
+                <div class="form-group">
+                    <label>Encrypted Message *</label>
+                    <textarea id="aesDecMsg" placeholder="Paste encrypted message..."></textarea>
+                </div>
+                <div id="aesDecResult"></div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal('aesDec')">CANCEL</button>
+                <button class="btn btn-primary" onclick="aesDecrypt()">DECRYPT</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Password Modal -->
+    <div class="modal-overlay" id="addPasswordModal">
+        <div class="modal">
+            <div class="modal-header"><div class="modal-title">Add Password</div></div>
+            <div class="modal-content">
+                <div class="form-group"><label>Name *</label><input type="text" id="pwdItemName" placeholder="Google, Facebook, etc."></div>
+                <div class="form-group"><label>Username/Email</label><input type="text" id="pwdItemUser" placeholder="username@example.com"></div>
+                <div class="form-group"><label>Password *</label><input type="password" id="pwdItemPass"></div>
+                <div class="form-group">
+                    <label>TOTP Secret (Optional)</label>
+                    <input type="text" id="pwdItemTotp" placeholder="Base32 secret">
+                    <div class="info-card" style="margin-top:8px;">ℹ️ For 2FA codes</div>
+                </div>
+                <div class="form-group"><label>Notes</label><textarea id="pwdItemNotes" style="min-height:80px;"></textarea></div>
+                <div id="addPasswordResult"></div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal('addPassword')">CANCEL</button>
+                <button class="btn btn-primary" onclick="savePassword()">SAVE</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Password Details Modal -->
+    <div class="modal-overlay" id="passwordDetailsModal">
+        <div class="modal">
+            <div class="modal-header"><div class="modal-title" id="pwdDetailsName">Password</div></div>
+            <div class="modal-content"><div id="pwdDetailsContent"></div></div>
+            <div class="modal-actions">
+                <button class="btn btn-danger" onclick="deletePassword()">DELETE</button>
+                <button class="btn btn-secondary" onclick="closeModal('passwordDetails')">CLOSE</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsOTP/1.0.1/jsOTP.min.js"></script>
+    <script>
+        let keys = {public:[],private:[]};
+        let passwords = [];
+        let settings = {darkMode:false};
+        let selectedKey = {type:null,index:null};
+        let selectedPassword = null;
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 3000);
+        }
+
+        function copy(text) {
+            if (!text) return;
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(() => showToast('✅ Copied!'));
+            } else {
+                const t = document.createElement('textarea');
+                t.value = text; t.style.position = 'fixed'; t.style.opacity = '0';
+                document.body.appendChild(t); t.select(); document.execCommand('copy');
+                document.body.removeChild(t); showToast('✅ Copied!');
+            }
+        }
+
+        function download(content, filename, type) {
+            try {
+                const blob = typeof content === 'string' ? new Blob([content],{type}) : content;
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = filename;
+                a.click();
+                URL.revokeObjectURL(a.href);
+                showToast('✅ Downloaded');
+            } catch(e) {
+                showToast('❌ Error');
+            }
+        }
+
+        function esc(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatDate(dateStr) {
+            const d = new Date(dateStr);
+            return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
+        }
+
+        setTimeout(() => {
+            if (typeof openpgp !== 'undefined') initApp();
+            else showToast('Failed to load');
+        }, 1500);
+
+        function initApp() {
+            try {
+                const sk = localStorage.getItem('pgpKeys');
+                const sp = localStorage.getItem('passwords');
+                const ss = localStorage.getItem('pgpSettings');
+                if (sk) keys = JSON.parse(sk);
+                if (sp) passwords = JSON.parse(sp);
+                if (ss) settings = JSON.parse(ss);
+                if (settings.darkMode) document.body.classList.add('dark-mode');
+            } catch(e) {}
+            updateKeysList();
+            updatePasswordsList();
+            updateStorageInfo();
+            updateKeySelects();
+            document.getElementById('loadingScreen').style.display = 'none';
+        }
+
+        function saveKeys() {
+            try {
+                localStorage.setItem('pgpKeys', JSON.stringify(keys));
+                updateStorageInfo();
+            } catch(e) {}
+        }
+
+        function savePasswords() {
+            try {
+                localStorage.setItem('passwords', JSON.stringify(passwords));
+                updateStorageInfo();
+            } catch(e) {}
+        }
+
+        function toggleDrawer() {
+            document.getElementById('drawer').classList.toggle('active');
+            document.getElementById('drawerOverlay').classList.toggle('active');
+        }
+
+        function closeDrawer() {
+            document.getElementById('drawer').classList.remove('active');
+            document.getElementById('drawerOverlay').classList.remove('active');
+        }
+
+        function showView(name) {
+            document.querySelectorAll('.view-content').forEach(v => v.classList.add('hidden'));
+            const map = {keys:'keysView',passwords:'passwordsView',encrypt:'encryptView',files:'filesView',sign:'signView',aes:'aesView',tools:'toolsView',qr:'qrView',backup:'backupView',settings:'settingsView'};
+            const titles = {keys:'My Keys',passwords:'Password Manager',encrypt:'Encrypt/Decrypt',files:'File Encryption',sign:'Sign/Verify',aes:'AES-256',tools:'Tools',qr:'QR Tools',backup:'Backup',settings:'Settings'};
+            if (map[name]) {
+                document.getElementById(map[name]).classList.remove('hidden');
+                document.getElementById('appTitle').textContent = titles[name];
+            }
+            updateFabForView(name);
+        }
+
+        function showModal(name) {
+            const map = {keyActions:'keyActionsModal',generate:'generateModal',importPub:'importPubModal',importPriv:'importPrivModal',encrypt:'encryptModal',decrypt:'decryptModal',sign:'signModal',verify:'verifyModal',aesEnc:'aesEncModal',aesDec:'aesDecModal',addPassword:'addPasswordModal',passwordDetails:'passwordDetailsModal'};
+            if (map[name]) {
+                document.getElementById(map[name]).classList.add('active');
+                if (['encrypt','decrypt','sign'].includes(name)) updateKeySelects();
+            }
+        }
+
+        function closeModal(name) {
+            const map = {keyActions:'keyActionsModal',generate:'generateModal',importPub:'importPubModal',importPriv:'importPrivModal',encrypt:'encryptModal',decrypt:'decryptModal',sign:'signModal',verify:'verifyModal',aesEnc:'aesEncModal',aesDec:'aesDecModal',addPassword:'addPasswordModal',passwordDetails:'passwordDetailsModal'};
+            if (map[name]) document.getElementById(map[name]).classList.remove('active');
+        }
+
+        function toggleFabMenu() {
+            document.getElementById('fabMenu').classList.toggle('active');
+            document.getElementById('fabBtn').classList.toggle('active');
+        }
+
+        function updateFabForView(name) {
+            const fab = document.querySelector('.fab');
+            const menu = document.getElementById('fabMenu');
+            if (name === 'passwords') {
+                fab.onclick = () => showModal('addPassword');
+                menu.style.display = 'none';
+                fab.style.display = 'flex';
+            } else if (name === 'keys') {
+                fab.onclick = toggleFabMenu;
+                menu.style.display = 'block';
+                fab.style.display = 'flex';
+            } else {
+                fab.style.display = 'none';
+            }
+        }
+
+        function updateKeysList() {
+            const list = document.getElementById('keysList');
+            const total = keys.public.length + keys.private.length;
+            if (total === 0) {
+                list.innerHTML = '<div class="empty-state"><div class="empty-icon">🔑</div><div class="empty-text">No keys<br>Tap + to create</div></div>';
+                return;
+            }
+            let html = '';
+            const all = [];
+            keys.private.forEach((k,i) => all.push({type:'private',index:i,...k}));
+            keys.public.forEach((k,i) => { if(!all.some(a=>a.email===k.email&&a.type==='private')) all.push({type:'public',index:i,...k}); });
+            all.forEach(k => {
+                const icon = k.type==='private'?'🔒':'📗';
+                const status = k.hasPassphrase?'<span class="key-status status-protected">🔒 Protected</span>':'<span class="key-status status-unprotected">⚠️ Unprotected</span>';
+                const date = k.created?formatDate(k.created):'';
+                html += '<div class="key-card" onclick="openKeyActions(\''+k.type+'\','+k.index+')">';
+                html += '<div class="key-icon">'+icon+'</div><div class="key-info">';
+                html += '<div class="key-name">'+esc(k.name||'Unknown')+'</div>';
+                html += '<div class="key-email">'+esc(k.email||'No email')+'</div>';
+                html += '<div class="key-meta"><span class="key-badge">My Key • </span>';
+                if (k.type==='private') html += status;
+                if (date) html += ' <span class="key-date">• Created '+date+'</span>';
+                html += '</div></div></div>';
+            });
+            list.innerHTML = html;
+        }
+
+        function openKeyActions(type,index) {
+            selectedKey = {type,index};
+            const key = keys[type][index];
+            document.getElementById('keyActionTitle').textContent = key.name||'Unknown';
+            document.getElementById('keyActionEmail').textContent = key.email||'';
+            document.getElementById('changePassItem').style.display = type==='private'?'block':'none';
+            showModal('keyActions');
+        }
+
+        async function copyPublicKey() {
+            try {
+                const {type,index} = selectedKey;
+                if (type==='public') copy(keys.public[index].key);
+                else {
+                    const pk = await openpgp.readPrivateKey({armoredKey:keys.private[index].key});
+                    copy(pk.toPublic().armor());
+                }
+                closeModal('keyActions');
+            } catch(e) { showToast('❌ Error'); }
+        }
+
+        async function showFingerprint() {
+            try {
+                const {type,index} = selectedKey;
+                const k = keys[type][index].key;
+                const key = type==='public'?await openpgp.readKey({armoredKey:k}):await openpgp.readPrivateKey({armoredKey:k});
+                const fp = key.getFingerprint().toUpperCase().match(/.{1,4}/g).join(' ');
+                alert('🔍 Fingerprint:\n'+fp);
+            } catch(e) { showToast('❌ Error'); }
+        }
+
+        async function changePassphrase() {
+            try {
+                const {type,index} = selectedKey;
+                if (type!=='private') return;
+                const old = prompt('Current passphrase:')||'';
+                const neu = prompt('New passphrase:')||'';
+                let pk = await openpgp.readPrivateKey({armoredKey:keys.private[index].key});
+                if (!pk.isDecrypted()) pk = await openpgp.decryptKey({privateKey:pk,passphrase:old});
+                if (neu) {
+                    const enc = await openpgp.encryptKey({privateKey:pk,passphrase:neu});
+                    keys.private[index].key = enc.armor();
+                    keys.private[index].hasPassphrase = true;
+                } else {
+                    keys.private[index].key = pk.armor();
+                    keys.private[index].hasPassphrase = false;
+                }
+                saveKeys();
+                updateKeysList();
+                closeModal('keyActions');
+                showToast('✅ Changed');
+            } catch(e) { showToast('❌ Wrong passphrase'); }
+        }
+
+        function editKeyMeta() {
+            const {type,index} = selectedKey;
+            const key = keys[type][index];
+            const n = prompt('Name:',key.name);
+            const e = prompt('Email:',key.email);
+            if (n) keys[type][index].name = n.trim();
+            if (e) keys[type][index].email = e.trim();
+            saveKeys();
+            updateKeysList();
+            closeModal('keyActions');
+            showToast('✅ Updated');
+        }
+
+        function exportKey() {
+            const {type,index} = selectedKey;
+            const key = keys[type][index];
+            download(key.key, key.email+'_'+type+'.asc', 'text/plain');
+            closeModal('keyActions');
+        }
+
+        function deleteKey() {
+            const {type,index} = selectedKey;
+            const key = keys[type][index];
+            if (confirm('Delete key for '+key.name+'?')) {
+                keys[type].splice(index,1);
+                saveKeys();
+                updateKeysList();
+                updateKeySelects();
+                closeModal('keyActions');
+                showToast('✅ Deleted');
+            }
+        }
+
+        async function generateKey() {
+            const name = document.getElementById('genName').value.trim();
+            const email = document.getElementById('genEmail').value.trim();
+            const pass = document.getElementById('genPass').value;
+            const type = document.getElementById('genType').value;
+            const res = document.getElementById('genResult');
+            if (!name||!email) { res.innerHTML='<div class="info-card error">Fill all</div>'; return; }
+            res.innerHTML='<div style="text-align:center;"><div class="spinner" style="margin:20px auto;"></div><p>Generating...</p></div>';
+            try {
+                const opts = {userIDs:[{name,email}],passphrase:pass||undefined};
+                if (type==='ecc') { opts.type='ecc'; opts.curve='curve25519'; }
+                else if (type==='rsa-2048') { opts.type='rsa'; opts.rsaBits=2048; }
+                else { opts.type='rsa'; opts.rsaBits=4096; }
+                const {privateKey,publicKey} = await openpgp.generateKey(opts);
+                keys.public.push({id:email+'_'+Date.now(),name,email,key:publicKey,created:new Date().toISOString()});
+                keys.private.push({id:email+'_'+Date.now(),name,email,key:privateKey,hasPassphrase:!!pass,created:new Date().toISOString()});
+                saveKeys();
+                updateKeysList();
+                updateKeySelects();
+                res.innerHTML='<div class="info-card success">✅ Generated!</div>';
+                setTimeout(() => { closeModal('generate'); res.innerHTML=''; }, 2000);
+            } catch(e) { res.innerHTML='<div class="info-card error">Error</div>'; }
+        }
+
+        async function importPublicKey() {
+            const data = document.getElementById('importPubData').value.trim();
+            const res = document.getElementById('importPubResult');
+            if (!data) { res.innerHTML='<div class="info-card warning">Paste key</div>'; return; }
+            try {
+                const key = await openpgp.readKey({armoredKey:data});
+                const uid = key.users[0].userID;
+                keys.public.push({id:(uid.email||'uk')+'_'+Date.now(),name:uid.name||'Unknown',email:uid.email||'unknown',key:data,created:new Date().toISOString()});
+                saveKeys();
+                updateKeysList();
+                updateKeySelects();
+                res.innerHTML='<div class="info-card success">✅ Imported!</div>';
+                setTimeout(() => { closeModal('importPub'); res.innerHTML=''; }, 2000);
+            } catch(e) { res.innerHTML='<div class="info-card error">Invalid</div>'; }
+        }
+
+        async function importPrivateKey() {
+            const data = document.getElementById('importPrivData').value.trim();
+            const res = document.getElementById('importPrivResult');
+            if (!data) { res.innerHTML='<div class="info-card warning">Paste key</div>'; return; }
+            try {
+                const key = await openpgp.readPrivateKey({armoredKey:data});
+                const uid = key.users[0].userID;
+                keys.private.push({id:(uid.email||'uk')+'_'+Date.now(),name:uid.name||'Unknown',email:uid.email||'unknown',key:data,hasPassphrase:!key.isDecrypted(),created:new Date().toISOString()});
+                saveKeys();
+                updateKeysList();
+                updateKeySelects();
+                res.innerHTML='<div class="info-card success">✅ Imported!</div>';
+                setTimeout(() => { closeModal('importPriv'); res.innerHTML=''; }, 2000);
+            } catch(e) { res.innerHTML='<div class="info-card error">Invalid</div>'; }
+        }
+
+        function updateKeySelects() {
+            const encSel = document.getElementById('encryptRecipient');
+            const decSel = document.getElementById('decryptKey');
+            const signSel = document.getElementById('signKey');
+            if (encSel) {
+                encSel.innerHTML = '<option value="">Select...</option>';
+                keys.public.forEach((k,i) => encSel.innerHTML += '<option value="'+i+'">'+esc(k.name||k.email)+'</option>');
+            }
+            if (decSel) {
+                decSel.innerHTML = '<option value="">Select...</option>';
+                keys.private.forEach((k,i) => decSel.innerHTML += '<option value="'+i+'">'+esc(k.name||k.email)+'</option>');
+            }
+            if (signSel) {
+                signSel.innerHTML = '<option value="">Select...</option>';
+                keys.private.forEach((k,i) => signSel.innerHTML += '<option value="'+i+'">'+esc(k.name||k.email)+'</option>');
+            }
+        }
+
+        async function encryptMessage() {
+            const idx = document.getElementById('encryptRecipient').value;
+            const msg = document.getElementById('encryptMessage').value.trim();
+            const res = document.getElementById('encryptResult');
+            if (!idx||!msg) { res.innerHTML='<div class="info-card warning">Fill all</div>'; return; }
+            res.innerHTML='<div style="text-align:center;"><div class="spinner" style="margin:20px auto;"></div></div>';
+            try {
+                const pk = await openpgp.readKey({armoredKey:keys.public[idx].key});
+                const enc = await openpgp.encrypt({message:await openpgp.createMessage({text:msg}),encryptionKeys:pk});
+                res.innerHTML='<div class="info-card success">✅ Encrypted!</div><textarea readonly style="margin-top:12px;">'+esc(enc)+'</textarea><button class="btn btn-primary btn-full" style="margin-top:12px;" onclick="copy(this.previousElementSibling.value)">COPY</button>';
+            } catch(e) { res.innerHTML='<div class="info-card error">Error</div>'; }
+        }
+
+        async function decryptMessage() {
+            const idx = document.getElementById('decryptKey').value;
+            const pass = document.getElementById('decryptPass').value;
+            const msg = document.getElementById('decryptMessage').value.trim();
+            const res = document.getElementById('decryptResult');
+            if (!idx||!msg) { res.innerHTML='<div class="info-card warning">Fill all</div>'; return; }
+            res.innerHTML='<div style="text-align:center;"><div class="spinner" style="margin:20px auto;"></div></div>';
+            try {
+                let pk = await openpgp.readPrivateKey({armoredKey:keys.private[idx].key});
+                if (!pk.isDecrypted()&&pass) pk = await openpgp.decryptKey({privateKey:pk,passphrase:pass});
+                const message = await openpgp.readMessage({armoredMessage:msg});
+                const {data:dec} = await openpgp.decrypt({message,decryptionKeys:pk});
+                res.innerHTML='<div class="info-card success">✅ Decrypted!</div><textarea readonly style="margin-top:12px;">'+esc(dec)+'</textarea><button class="btn btn-primary btn-full" style="margin-top:12px;" onclick="copy(this.previousElementSibling.value)">COPY</button>';
+            } catch(e) { res.innerHTML='<div class="info-card error">Wrong passphrase</div>'; }
+        }
+
+        async function signMessage() {
+            const idx = document.getElementById('signKey').value;
+            const pass = document.getElementById('signPass').value;
+            const msg = document.getElementById('signMessage').value.trim();
+            const res = document.getElementById('signResult');
+            if (!idx||!msg) { res.innerHTML='<div class="info-card warning">Fill all</div>'; return; }
+            res.innerHTML='<div style="text-align:center;"><div class="spinner" style="margin:20px auto;"></div></div>';
+            try {
+                let pk = await openpgp.readPrivateKey({armoredKey:keys.private[idx].key});
+                if (!pk.isDecrypted()&&pass) pk = await openpgp.decryptKey({privateKey:pk,passphrase:pass});
+                const signed = await openpgp.sign({message:await openpgp.createCleartextMessage({text:msg}),signingKeys:pk});
+                res.innerHTML='<div class="info-card success">✅ Signed!</div><textarea readonly style="margin-top:12px;">'+esc(signed)+'</textarea><button class="btn btn-primary btn-full" style="margin-top:12px;" onclick="copy(this.previousElementSibling.value)">COPY</button>';
+            } catch(e) { res.innerHTML='<div class="info-card error">Error</div>'; }
+        }
+
+        async function verifySignature() {
+            const msg = document.getElementById('verifyMessage').value.trim();
+            const res = document.getElementById('verifyResult');
+            if (!msg) { res.innerHTML='<div class="info-card warning">Paste message</div>'; return; }
+            res.innerHTML='<div style="text-align:center;"><div class="spinner" style="margin:20px auto;"></div></div>';
+            try {
+                const message = await openpgp.readCleartextMessage({cleartextMessage:msg});
+                let verified = false, by = 'Unknown';
+                for (let pk of keys.public) {
+                    try {
+                        const key = await openpgp.readKey({armoredKey:pk.key});
+                        const result = await openpgp.verify({message,verificationKeys:key});
+                        await result.signatures[0].verified;
+                        verified = true; by = pk.name||pk.email; break;
+                    } catch(e) {}
+                }
+                if (verified) res.innerHTML='<div class="info-card success">✅ Valid by: '+esc(by)+'</div><textarea readonly style="margin-top:12px;">'+esc(message.getText())+'</textarea>';
+                else res.innerHTML='<div class="info-card warning">Could not verify</div>';
+            } catch(e) { res.innerHTML='<div class="info-card error">Error</div>'; }
+        }
+
+        async function aesEncrypt() {
+            const pwd = document.getElementById('aesEncPass').value;
+            const msg = document.getElementById('aesEncMsg').value.trim();
+            const res = document.getElementById('aesEncResult');
+            if (!pwd||!msg) { res.innerHTML='<div class="info-card warning">Fill all</div>'; return; }
+            res.innerHTML='<div style="text-align:center;"><div class="spinner" style="margin:20px auto;"></div></div>';
+            try {
+                const enc = await openpgp.encrypt({message:await openpgp.createMessage({text:msg}),passwords:[pwd],format:'armored'});
+                res.innerHTML='<div class="info-card success">✅ Encrypted!</div><textarea readonly style="margin-top:12px;">'+esc(enc)+'</textarea><button class="btn btn-primary btn-full" style="margin-top:12px;" onclick="copy(this.previousElementSibling.value)">COPY</button>';
+            } catch(e) { res.innerHTML='<div class="info-card error">Error</div>'; }
+        }
+
+        async function aesDecrypt() {
+            const pwd = document.getElementById('aesDecPass').value;
+            const msg = document.getElementById('aesDecMsg').value.trim();
+            const res = document.getElementById('aesDecResult');
+            if (!pwd||!msg) { res.innerHTML='<div class="info-card warning">Fill all</div>'; return; }
+            res.innerHTML='<div style="text-align:center;"><div class="spinner" style="margin:20px auto;"></div></div>';
+            try {
+                const message = await openpgp.readMessage({armoredMessage:msg});
+                const {data:dec} = await openpgp.decrypt({message,passwords:[pwd]});
+                res.innerHTML='<div class="info-card success">✅ Decrypted!</div><textarea readonly style="margin-top:12px;">'+esc(dec)+'</textarea><button class="btn btn-primary btn-full" style="margin-top:12px;" onclick="copy(this.previousElementSibling.value)">COPY</button>';
+            } catch(e) { res.innerHTML='<div class="info-card error">Wrong password</div>'; }
+        }
+
+        // PASSWORD MANAGER
+        function updatePasswordsList() {
+            const list = document.getElementById('passwordsList');
+            if (passwords.length===0) {
+                list.innerHTML='<div class="empty-state"><div class="empty-icon">🔐</div><div class="empty-text">No passwords<br>Tap + to add</div></div>';
+                return;
+            }
+            let html = '';
+            passwords.forEach((p,i) => {
+                html += '<div class="password-item" onclick="viewPassword('+i+')">';
+                html += '<div class="password-header">';
+                html += '<div class="password-icon">🔐</div>';
+                html += '<div class="password-details">';
+                html += '<div class="password-name">'+esc(p.name)+'</div>';
+                html += '<div class="password-username">'+esc(p.username||'')+'</div>';
+                html += '</div>';
+                if (p.totp) {
+                    const code = generateTOTP(p.totp);
+                    const timeleft = 30 - (Math.floor(Date.now()/1000)%30);
+                    html += '<div class="totp-wrapper"><div class="totp-code">'+code+'</div><div class="totp-timer">'+timeleft+'s</div></div>';
+                }
+                html += '</div></div>';
+            });
+            list.innerHTML = html;
+        }
+
+        function savePassword() {
+            const name = document.getElementById('pwdItemName').value.trim();
+            const user = document.getElementById('pwdItemUser').value.trim();
+            const pass = document.getElementById('pwdItemPass').value;
+            const totp = document.getElementById('pwdItemTotp').value.trim();
+            const notes = document.getElementById('pwdItemNotes').value.trim();
+            if (!name||!pass) {
+                document.getElementById('addPasswordResult').innerHTML='<div class="info-card warning">Name and password required</div>';
+                return;
+            }
+            passwords.push({id:Date.now(),name,username:user,password:pass,totp:totp||null,notes,created:new Date().toISOString()});
+            savePasswords();
+            updatePasswordsList();
+            showToast('✅ Saved');
+            closeModal('addPassword');
+            ['pwdItemName','pwdItemUser','pwdItemPass','pwdItemTotp','pwdItemNotes'].forEach(id => document.getElementById(id).value='');
+        }
+
+        function viewPassword(idx) {
+            selectedPassword = idx;
+            const p = passwords[idx];
+            document.getElementById('pwdDetailsName').textContent = p.name;
+            let html = '<div class="form-group"><strong>Username:</strong><br>'+esc(p.username||'None')+'<br><button class="btn btn-secondary" style="margin-top:8px;" onclick="copy(\''+esc(p.username)+'\')">COPY</button></div>';
+            html += '<div class="form-group"><strong>Password:</strong><br><input type="password" value="'+esc(p.password)+'" readonly style="margin-top:8px;"><button class="btn btn-secondary" style="margin-top:8px;" onclick="copy(\''+esc(p.password)+'\')">COPY</button></div>';
+            if (p.totp) {
+                const code = generateTOTP(p.totp);
+                html += '<div class="form-group"><strong>2FA Code:</strong><br><div class="totp-code" style="margin:8px 0;">'+code+'</div><button class="btn btn-secondary" onclick="copy(\''+code+'\')">COPY</button></div>';
+            }
+            if (p.notes) html += '<div class="form-group"><strong>Notes:</strong><br>'+esc(p.notes)+'</div>';
+            html += '<div class="info-card"><strong>Created:</strong> '+formatDate(p.created)+'</div>';
+            document.getElementById('pwdDetailsContent').innerHTML = html;
+            showModal('passwordDetails');
+        }
+
+        function deletePassword() {
+            if (confirm('Delete password?')) {
+                passwords.splice(selectedPassword,1);
+                savePasswords();
+                updatePasswordsList();
+                closeModal('passwordDetails');
+                showToast('✅ Deleted');
+            }
+        }
+
+        // FIXED TOTP IMPLEMENTATION
+        function generateTOTP(secret) {
+            try {
+                const totp = new jsOTP.totp();
+                return totp.getOtp(secret);
+            } catch(e) {
+                return '------';
+            }
+        }
+
+        setInterval(() => {
+            if (!document.getElementById('passwordsView').classList.contains('hidden')) updatePasswordsList();
+        }, 1000);
+
+        // TOOLS
+        async function generateHash() {
+            const text = document.getElementById('hashInput').value.trim();
+            const type = document.getElementById('hashType').value;
+            const out = document.getElementById('hashOutput');
+            if (!text) { out.innerHTML='<div class="info-card warning" style="margin-top:12px;">Enter text</div>'; return; }
+            try {
+                const data = new TextEncoder().encode(text);
+                const buf = await crypto.subtle.digest(type,data);
+                const hash = Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+                out.innerHTML='<div class="info-card success" style="margin-top:12px;"><strong>'+type+':</strong></div><textarea readonly style="margin-top:12px;">'+hash+'</textarea><button class="btn btn-primary btn-full" style="margin-top:12px;" onclick="copy(this.previousElementSibling.value)">COPY</button>';
+            } catch(e) { out.innerHTML='<div class="info-card error" style="margin-top:12px;">Error</div>'; }
+        }
+
+        // STEGANOGRAPHY - HIDE TEXT INSIDE EMOJI
+        function stegoHide() {
+            const text = document.getElementById('stegoInput').value.trim();
+            const out = document.getElementById('stegoOutput');
+            if (!text) { out.innerHTML='<div class="info-card warning" style="margin-top:12px;">Enter text</div>'; return; }
+            
+            // Use zero-width characters to hide text
+            const zwc = ['​','‌','‍']; // Zero-width space, zero-width non-joiner, zero-width joiner
+            let encoded = '';
+            for (let i=0; i<text.length; i++) {
+                const code = text.charCodeAt(i);
+                const binary = code.toString(2).padStart(16,'0');
+                for (let bit of binary) {
+                    encoded += bit==='0'?zwc[0]:zwc[1];
+                }
+            }
+            
+            // Add emoji as cover
+            const coverEmojis = '😀🎉🌟💎🔥🎯🚀🌈✨💫';
+            const cover = coverEmojis[Math.floor(Math.random()*coverEmojis.length)];
+            const result = cover + encoded + cover;
+            
+            out.innerHTML='<div class="info-card success" style="margin-top:12px;">✅ Text hidden inside emoji! Share this:</div><textarea readonly style="margin-top:12px;">'+result+'</textarea><button class="btn btn-primary btn-full" style="margin-top:12px;" onclick="copy(this.previousElementSibling.value)">COPY</button><div class="info-card warning" style="margin-top:12px;">⚠️ The emoji contains invisible characters with your hidden message!</div>';
+        }
+
+        function stegoReveal() {
+            const text = document.getElementById('stegoInput').value;
+            const out = document.getElementById('stegoOutput');
+            if (!text) { out.innerHTML='<div class="info-card warning" style="margin-top:12px;">Enter emoji with hidden text</div>'; return; }
+            
+            try {
+                // Extract zero-width characters
+                const zwc = ['​','‌','‍'];
+                let binary = '';
+                for (let char of text) {
+                    if (char===zwc[0]) binary += '0';
+                    else if (char===zwc[1]) binary += '1';
+                }
+                
+                // Convert binary to text
+                let result = '';
+                for (let i=0; i<binary.length; i+=16) {
+                    const chunk = binary.substr(i,16);
+                    if (chunk.length===16) {
+                        result += String.fromCharCode(parseInt(chunk,2));
+                    }
+                }
+                
+                if (result) {
+                    out.innerHTML='<div class="info-card success" style="margin-top:12px;">✅ Hidden message revealed!</div><textarea readonly style="margin-top:12px;">'+esc(result)+'</textarea><button class="btn btn-primary btn-full" style="margin-top:12px;" onclick="copy(this.previousElementSibling.value)">COPY</button>';
+                } else {
+                    out.innerHTML='<div class="info-card warning" style="margin-top:12px;">No hidden message found</div>';
+                }
+            } catch(e) {
+                out.innerHTML='<div class="info-card error" style="margin-top:12px;">Failed to decode</div>';
+            }
+        }
+
+        function generatePassword() {
+            const len = parseInt(document.getElementById('pwdLength').value);
+            const upper = document.getElementById('pwdUpper').checked;
+            const lower = document.getElementById('pwdLower').checked;
+            const nums = document.getElementById('pwdNumbers').checked;
+            const syms = document.getElementById('pwdSymbols').checked;
+            const out = document.getElementById('pwdOutput');
+            let charset = '';
+            if (upper) charset += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+            if (lower) charset += 'abcdefghijklmnopqrstuvwxyz';
+            if (nums) charset += '0123456789';
+            if (syms) charset += '!@#$%^&*()_+-=[]{}|;:,.<>?';
+            if (!charset) { out.innerHTML='<div class="info-card warning" style="margin-top:12px;">Select options</div>'; return; }
+            let pwd = '';
+            const arr = new Uint32Array(len);
+            crypto.getRandomValues(arr);
+            for (let i=0; i<len; i++) pwd += charset[arr[i]%charset.length];
+            out.innerHTML='<div class="info-card success" style="margin-top:12px;">✅ Generated</div><textarea readonly style="margin-top:12px;font-family:monospace;">'+esc(pwd)+'</textarea><button class="btn btn-primary btn-full" style="margin-top:12px;" onclick="copy(this.previousElementSibling.value)">COPY</button>';
+        }
+
+        function generateQR() {
+            const text = document.getElementById('qrInput').value.trim();
+            const out = document.getElementById('qrOutput');
+            if (!text) { showToast('Enter text'); return; }
+            out.innerHTML = '';
+            if (typeof QRCode !== 'undefined') {
+                new QRCode(out, {text, width:300, height:300});
+                showToast('✅ Generated');
+            } else {
+                showToast('QR library not loaded');
+            }
+        }
+
+        // BACKUP
+        function exportASC() {
+            if (keys.public.length===0&&keys.private.length===0) { showToast('No keys'); return; }
+            let c = '';
+            keys.private.forEach(k => c += k.key+'\n\n');
+            keys.public.forEach(k => c += k.key+'\n\n');
+            download(c, 'keys_'+Date.now()+'.asc', 'text/plain');
+        }
+
+        async function exportZIP() {
+            if (typeof JSZip==='undefined') { showToast('ZIP not loaded'); return; }
+            if (keys.public.length===0&&keys.private.length===0) { showToast('No keys'); return; }
+            const pwd = prompt('Password:');
+            if (!pwd) return;
+            try {
+                const zip = new JSZip();
+                keys.private.forEach((k,i) => zip.file('private_'+i+'_'+k.email+'.asc', k.key));
+                keys.public.forEach((k,i) => zip.file('public_'+i+'_'+k.email+'.asc', k.key));
+                const blob = await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:9},encryptStrength:3,password:pwd});
+                download(blob, 'keys_'+Date.now()+'.zip', 'application/zip');
+            } catch(e) { showToast('Error'); }
+        }
+
+        function exportGPG() {
+            if (keys.public.length===0&&keys.private.length===0) { showToast('No keys'); return; }
+            let c = '';
+            keys.private.forEach(k => c += k.key+'\n\n');
+            keys.public.forEach(k => c += k.key+'\n\n');
+            download(c, 'backup_'+new Date().toISOString().split('T')[0]+'_sec.pgp', 'text/plain');
+        }
+
+        function exportPasswords() {
+            if (passwords.length===0) { showToast('No passwords'); return; }
+            download(btoa(JSON.stringify(passwords)), 'passwords_'+Date.now()+'.json', 'application/json');
+        }
+
+        function importPasswords(input) {
+            const file = input.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(atob(e.target.result));
+                    if (confirm('Import '+data.length+' passwords?')) {
+                        passwords = passwords.concat(data);
+                        savePasswords();
+                        updatePasswordsList();
+                        showToast('✅ Imported');
+                    }
+                } catch(e) { showToast('Invalid file'); }
+            };
+            reader.readAsText(file);
+            input.value = '';
+        }
+
+        function restoreFile(input) {
+            const file = input.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                const c = e.target.result;
+                try {
+                    if (c.includes('-----BEGIN PGP')) await importPlainKeys(c);
+                    else showToast('Unsupported format');
+                } catch(e) { showToast('Error'); }
+            };
+            reader.readAsText(file);
+            input.value = '';
+        }
+
+        async function importPlainKeys(content) {
+            const blocks = content.match(/-----BEGIN PGP.*?-----END PGP.*?-----/gs);
+            if (!blocks) { showToast('No valid keys'); return; }
+            let imported = 0;
+            for (const k of blocks) {
+                try {
+                    try {
+                        const key = await openpgp.readKey({armoredKey:k});
+                        const uid = key.users[0].userID;
+                        keys.public.push({id:(uid.email||'uk')+'_'+Date.now(),name:uid.name||'Unknown',email:uid.email||'unknown',key:k,created:new Date().toISOString()});
+                        imported++;
+                        continue;
+                    } catch(e) {}
+                    const key = await openpgp.readPrivateKey({armoredKey:k});
+                    const uid = key.users[0].userID;
+                    keys.private.push({id:(uid.email||'uk')+'_'+Date.now(),name:uid.name||'Unknown',email:uid.email||'unknown',key:k,hasPassphrase:!key.isDecrypted(),created:new Date().toISOString()});
+                    imported++;
+                } catch(e) {}
+            }
+            if (imported>0) {
+                saveKeys();
+                updateKeysList();
+                updateKeySelects();
+                showToast('✅ Imported '+imported);
+            } else {
+                showToast('No valid keys');
+            }
+        }
+
+        // FILE ENCRYPTION
+        async function encryptFile(input) {
+            const file = input.files[0];
+            if (!file) return;
+            const pwd = prompt('Password:');
+            if (!pwd) { input.value=''; return; }
+            try {
+                showToast('Encrypting...');
+                const reader = new FileReader();
+                reader.onload = async function(e) {
+                    try {
+                        const content = btoa(String.fromCharCode(...new Uint8Array(e.target.result)));
+                        const enc = await openpgp.encrypt({message:await openpgp.createMessage({text:content}),passwords:[pwd]});
+                        download(enc, file.name+'.pgp', 'application/pgp-encrypted');
+                    } catch(e) { showToast('Error'); }
+                };
+                reader.readAsArrayBuffer(file);
+            } catch(e) { showToast('Error'); }
+            input.value = '';
+        }
+
+        async function decryptFile(input) {
+            const file = input.files[0];
+            if (!file) return;
+            const pwd = prompt('Password:');
+            if (!pwd) { input.value=''; return; }
+            try {
+                showToast('Decrypting...');
+                const reader = new FileReader();
+                reader.onload = async function(e) {
+                    try {
+                        const message = await openpgp.readMessage({armoredMessage:e.target.result});
+                        const {data:dec} = await openpgp.decrypt({message,passwords:[pwd]});
+                        const decoded = Uint8Array.from(atob(dec), c => c.charCodeAt(0));
+                        download(decoded, file.name.replace('.pgp',''), 'application/octet-stream');
+                    } catch(e) { showToast('Wrong password'); }
+                };
+                reader.readAsText(file);
+            } catch(e) { showToast('Error'); }
+            input.value = '';
+        }
+
+        // SETTINGS
+        function toggleTheme() {
+            settings.darkMode = !settings.darkMode;
+            document.body.classList.toggle('dark-mode');
+            localStorage.setItem('pgpSettings', JSON.stringify(settings));
+            showToast('✅ Theme changed');
+        }
+
+        function clearClipboard() {
+            if (navigator.clipboard) navigator.clipboard.writeText('').then(() => showToast('✅ Cleared'));
+            else showToast('✅ Cleared');
+        }
+
+        function clearAll() {
+            if (confirm('Delete all keys?')) {
+                keys = {public:[],private:[]};
+                saveKeys();
+                updateKeysList();
+                updateKeySelects();
+                showToast('✅ Deleted');
+            }
+        }
+
+        function clearAllPasswords() {
+            if (confirm('Delete all passwords?')) {
+                passwords = [];
+                savePasswords();
+                updatePasswordsList();
+                showToast('✅ Deleted');
+            }
+        }
+
+        function panicDestroy() {
+            if (confirm('🚨 DELETE EVERYTHING?')) {
+                if (confirm('FINAL WARNING!')) {
+                    localStorage.clear();
+                    keys = {public:[],private:[]};
+                    passwords = [];
+                    updateKeysList();
+                    updatePasswordsList();
+                    showToast('💥 Destroyed');
+                    setTimeout(() => location.reload(), 2000);
+                }
+            }
+        }
+
+        function updateStorageInfo() {
+            const total = keys.public.length + keys.private.length;
+            const pwds = passwords.length;
+            const size = new Blob([JSON.stringify(keys)+JSON.stringify(passwords)]).size;
+            const info = document.getElementById('storageInfo');
+            if (info) {
+                info.innerHTML = 'Keys: '+total+' (Pub: '+keys.public.length+', Priv: '+keys.private.length+')<br>Passwords: '+pwds+'<br>Storage: '+(size/1024).toFixed(2)+' KB<br>Status: ♾️ Permanent';
+            }
+        }
+
+        // Close modals on overlay click
+        document.querySelectorAll('.modal-overlay').forEach(overlay => {
+            overlay.addEventListener('click', function(e) {
+                if (e.target === this) this.classList.remove('active');
+            });
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
+                closeDrawer();
+                document.getElementById('fabMenu').classList.remove('active');
+                document.getElementById('fabBtn').classList.remove('active');
+            }
+        });
+
+        // Close FAB menu when clicking outside
+        document.addEventListener('click', function(e) {
+            const fab = document.querySelector('.fab-container');
+            if (!fab.contains(e.target)) {
+                document.getElementById('fabMenu').classList.remove('active');
+                document.getElementById('fabBtn').classList.remove('active');
+            }
+        });
+    </script>
+</body>
+</html>
